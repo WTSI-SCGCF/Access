@@ -28,10 +28,14 @@ Inputs:
    the following for each plate: barcode, sample type, concentration thresholds,
    and layout (location of Samples and relevant control wells).
 
-2. Standards file that holds the layout of the relevant standards plate (which 
+2. Standards file(s) that hold the layout of the relevant standards plate (which 
    file depends on the source plate sample type e.g. cDNA, gDNA etc.)
 
-3. Template RunDef file into which to insert run-specific parameters, some of
+3. Library Prep Parameters file(s) that hold the parameters for the varying types
+   of library preparation (which file depends on the source plate library prep 
+   parameters type e.g. ??) 
+
+4. Template RunDef file into which to insert run-specific parameters, some of
    which depend upon the numbers of plates.
 
 Outputs:
@@ -42,7 +46,7 @@ Outputs:
 
 3. Experiment run log to detail what was done.
 
-4. Input LIMS file moved to experiment run directory to detail what was 
+4. Input LIMS file moved to experiment run directory to record what was 
    requested.
 
 -------------------------------------------------------------------------------
@@ -90,11 +94,13 @@ Local standards layout file containing the following details:
 
 '''
 
-import argparse # to parse command line arguments
-import sys # for sys.exit
-import os # for file directory selection
-import json # for reading json files
-import inspect # for getting method name
+import argparse 	# to parse command line arguments
+import sys 			# for sys.exit
+import os 			# for file directory selection
+import json 		# for reading/writing json files
+import csv 			# for reading/writing csv files
+import inspect 		# for getting method name
+import re 			# for regex expressions
 
 from configobj 		import ConfigObj 		# for reading config files
 from Tkinter        import * 				# for the GUI interfaces
@@ -185,19 +191,24 @@ def parse_access_system_config_file():
 	# Verify that the options imported from the file match with an expected list maintained here
 	options_list = {
 		'Version':{'version_number':'flt'},
-		'Common':{'tempo_inbox_dir':'str', 
-				'ecp_armadillo_filepath':'str',
-				'ecp_greiner_black_filepath':'str',
-				'ecp_third_type_filepath':'str',
-				'expt_run_root_dir':'str',
+		'Common':{'dir_tempo_inbox':'str', 
+				'filepath_ecp_armadillo':'str',
+				'filepath_ecp_greiner_black':'str',
+				'filepath_ecp_third_type':'str',
+				'dir_expt_root':'str',
+				'dir_rundef_templates':'str',
 				'gui_width':'int',
 				'gui_height':'int',
 				'gui_x_posn':'int',
 				'gui_y_posn':'int'},
 		'Quantification':{'quant_max_source_plates_allowed':'int', 
-				'quant_lims_file_network_dir':'str', 
-				'quant_standards_dir':'str',
+				'quant_dir_lims_file_network':'str', 
+				'quant_dir_standards':'str',
 				'quant_filename_standards_ss2':'str',
+				'quant_filename_setup_rundef_template':'str',
+				'quant_filename_sources_to_standards_csv':'str',
+				'quant_filename_sources_to_blacks_csv':'str',
+				'quant_filename_standards_to_black_csv':'str',
 				'quant_cdna_min_conc':'flt',
 				'quant_cdna_max_conc':'flt',
 				'quant_cdna_min_percent_wells_ok':'flt',
@@ -214,6 +225,7 @@ def parse_access_system_config_file():
 		settings[opt_group] = {}
 		for opt, opt_type in opt_dict.iteritems():
 			if(config.has_key(opt_group)):
+				pprint(config[opt_group].keys())
 				if(config[opt_group].has_key(opt)):
 					if(opt_type == 'str'):
 						settings[opt_group][opt] = str(config[opt_group][opt])
@@ -223,7 +235,6 @@ def parse_access_system_config_file():
 						settings[opt_group][opt] = float(config[opt_group][opt])
 					elif(opt_type == 'bool'):
 						settings[opt_group][opt] = bool(config[opt_group][opt])
-						print(".")
 					else:
 						sys.exit("Access System Script: ERROR: Configuration file field type not understood for option group <" + str(opt_group)+ "> and option <" + str(opt) + ">, cannot continue")
 				else:
@@ -262,7 +273,7 @@ def parse_quantification_standards_config_file(stnd_type):
 	if(args.debug == True):
 		print("Standards config filename : %s" % standards_config_filename)	
 
-	standards_config_filepath = os.path.join(settings.get('Quantification').get('quant_standards_dir'), standards_config_filename)
+	standards_config_filepath = os.path.join(settings.get('Quantification').get('quant_dir_standards'), standards_config_filename)
 
 	if(args.debug == True):
 		print("Standards config filepath : %s" % standards_config_filepath)
@@ -345,7 +356,7 @@ def parse_quantification_standards_config_file(stnd_type):
 
 	return
 
-def read_library_prep_config_file():
+def parse_library_prep_config_file():
 	'''Parse the settings from the library preparation configuration file.
 
 
@@ -424,7 +435,7 @@ class QuantSetupGUI:
 									'grid_sticky':NW}
 		self.lbl_scgcf 			= create_widget_label(frame, lbl_scgcf_params)
 
-		self.logo_image			= PhotoImage(file='/Users/as28/Documents/PYTHON/team214/images/sanger_logo.ppm')
+		self.logo_image			= PhotoImage(file='images/sanger_logo.ppm')
 		lbl_logo_params			= {'widg_image':self.logo_image,
 									'widg_anchor':CENTER,
 									'grid_row':0,
@@ -452,7 +463,7 @@ class QuantSetupGUI:
 		# Row 2 - Instructions for user text area
 		# ---------------------------------------------------------------------
 		frame.grid_rowconfigure(2, weight=1)
-		self.instr_text  		= "Click 'Select File' to choose the Quantification plate grouping file downloaded " \
+		self.instr_text  		= "Click 'Select File' to choose the Quantification plate grouping file downloaded "\
 		"from the LIMS (or the equivalent manually created file). Check the summary of the information from the file, "\
 		"confirm how many black plates are loaded into stack 4 and then press 'Create Access Files' to create the RunDef "\
 		"and ECHO csv files."
@@ -596,7 +607,7 @@ class QuantSetupGUI:
 		self.clear_screen()
 
 		# normpath fixes path for different OSs
-		limsdir = os.path.normpath(settings.get('Quantification').get('quant_lims_file_network_dir'))
+		limsdir = os.path.normpath(settings.get('Quantification').get('quant_dir_lims_file_network'))
 
 		if(args.debug == True):
 			print("LIMS file directory: %s" % limsdir)
@@ -618,9 +629,10 @@ class QuantSetupGUI:
 			if(self.validate_data_from_lims_file() == True):
 
 				# at this point we need to know which standards we are using e.g. SS2 and load the relevant file
-				parse_quantification_standards_config_file(self.data_summary["standards_type"])
+				parse_quantification_standards_config_file(self.data_summary['standards_type'])
 
 				# TODO: need validation check to make sure standards layout can handle number of plates in this run
+				# self.settings[Quantification][quant_max_source_plates_allowed]
 
 				# display a summary of the data in the file (one line per plate) and ask user to confirm generation of rundef and csv files
 				self.display_summary_of_plates()
@@ -673,12 +685,85 @@ class QuantSetupGUI:
 		if askyesno('Verify', 'This will generate the Access System RunDef and Echo files. Are you sure?'):
 			self.display_message(False, "Starting file creation process, please wait...")
 
+		# create expt dir using LIMS_PLATE_GROUP_ID
+		self.expt_directory = os.path.join(settings.get('Common').get('dir_expt_root'), self.data_summary['lims_plate_group_id'])
 
-		# TODO:
-		# create expt dir using RUN_ID
-		# generate rundef and Echo csvs in expt dir
-		# copy rundef to INBOX dir
-		# move LIMS file to expt dir
+		if(args.debug == True):
+			print("Experiment dir = %s" % self.expt_directory)
+
+		# TODO: may need try catch around this?
+		check_and_create_directory(self.expt_directory)
+
+		# TODO: generate Echo csvs in expt dir
+		if(self.generate_csv_files()):
+			print("gen csvs returned true")
+		else:
+			print("gen csvs returned false")
+
+
+
+
+
+
+
+
+
+
+
+		
+		# TODO: read in rundef XML template
+		# dir_rundef_templates
+		# quant_setup_rundef_template_filename
+		# xml_string = read_xml_file()
+		# xmlstring = open('myxmldocument.xml', 'r').read()
+
+		# TODO: generate rundef file referencing csv files in expt dir
+
+		# %RUNSET_REFERENCE_ID%  -> reference the LIMS plate group id here? LIMS_PLATE_GROUP_ID
+		# %EXPT_ROOT_DIR%        -> to experiment directory e.g. C:\Users\ACCESS\Documents\ACCESS_DOCUMENTS\PIPELINE\dev\DNAQminimized 2PLATE\Temp
+		# %CHERRY_PICK_384PP_TO_384DEST_ECP_FP% -> ecp filepath -> C:\Users\ACCESS\Documents\ACCESS_DOCUMENTS\PIPELINE\dev\DNAQminimized\CherryPick 384PP to 384Dest.ecp
+		# %SOURCES_POOL_TO_STANDARDS_CSV_FP% -> 384 pooling to 1 on standards int file -> C:\Users\ACCESS\Documents\ACCESS_DOCUMENTS\PIPELINE\dev\DNAQminimized\template_384_to_1_no_barcodes_tvol.csv
+
+		# %POOLING_PLATEMAP_ROWS% -> source and destination plate rows
+		# <Plate EchoPlateID="1" PlateName="DNA_source_1" PlateType="384PP" Barcode="" LidType="" PlateCategory="Source" LocationURL="deck://Deck/1/5/" FinalLocation="deck://Deck/1/5/" PlateAccess="Sequential" PreRunActionSetName="Source" RunActionSetName="" PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNA_source_1" />
+		# <Plate EchoPlateID="3" PlateName="DNAQ_STD" PlateType="384PP_Dest" Barcode="" LidType="" PlateCategory="Destination" LocationURL="deck://Deck/1/1/" FinalLocation="deck://Deck/1/1/" PlateAccess="Sequential" PreRunActionSetName="DNAQ_STD" RunActionSetName="" PostRunActionSetName="DNAQ_STD" StorageDeviceSetName="" EchoTemplate="DNAQ_STD" />
+		# <Plate EchoPlateID="2" PlateName="DNA_source_2" PlateType="384PP" Barcode="" LidType="" PlateCategory="Source" LocationURL="deck://Deck/1/6/" FinalLocation="deck://Deck/1/6/" PlateAccess="Sequential" PreRunActionSetName="Source" RunActionSetName="" PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNA_source_2" />
+
+		# %CHERRY_PICK_384PP_TO_CORNINGBLACK_ECP_FP% -> ecp filepath -> C:\Users\ACCESS\Documents\ACCESS_DOCUMENTS\PIPELINE\dev\DNAQminimized 2PLATE\CherryPick 384PP to CorningBlack.ecp
+		# %SOURCES_TO_CORNINGBLACK_CSV_FP% C:\Users\ACCESS\Documents\ACCESS_DOCUMENTS\PIPELINE\dev\DNAQminimized 2PLATE\template_2X384_to_2X384CorningPSBlack_no_barcodes_tvol.csv
+		
+		# %SOURCES_PLATEMAP_ROWS% -> source and destination plate rows
+		# <Plate EchoPlateID="1" PlateName="DNA_source_1" PlateType="384PP" Barcode="" LidType="" PlateCategory="Source" LocationURL="deck://Deck/1/5/" FinalLocation="deck://Deck/1/5/" PlateAccess="Sequential" PreRunActionSetName="" RunActionSetName="" PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNA_source_1" />
+  		# <Plate EchoPlateID="3" PlateName="DNAQ_Black_1" PlateType="Corning_384PS_Black" Barcode="" LidType="" PlateCategory="Destination" LocationURL="deck://Deck/4/*/" FinalLocation="deck://Deck/3/*/" PlateAccess="Sequential" PreRunActionSetName="" RunActionSetName="" PostRunActionSetName="Destination" StorageDeviceSetName="" EchoTemplate="DNAQ_Black_1" />
+  		# <Plate EchoPlateID="2" PlateName="DNA_source_2" PlateType="384PP" Barcode="" LidType="" PlateCategory="Source" LocationURL="deck://Deck/1/6/" FinalLocation="deck://Deck/1/6/" PlateAccess="Sequential" PreRunActionSetName="" RunActionSetName="" PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNA_source_2" />
+  		# <Plate EchoPlateID="4" PlateName="DNAQ_Black_2" PlateType="Corning_384PS_Black" Barcode="" LidType="" PlateCategory="Destination" LocationURL="deck://Deck/4/*/" FinalLocation="deck://Deck/3/*/" PlateAccess="Sequential" PreRunActionSetName="" RunActionSetName="" PostRunActionSetName="Destination" StorageDeviceSetName="" EchoTemplate="DNAQ_Black_2" />
+
+  		# What does the DataFileName here do?!:
+		# <PHERAstar_Read_Plate>
+		# <ReadPlateParameters>Labcyte.POD.Devices.Pherastar.ReadPlateParameters</ReadPlateParameters>
+		# <ProtocolName>AccuClear UHS</ProtocolName>
+		# <DataFileName />
+		# <LoadUnloadOnly>False</LoadUnloadOnly>
+		# <Schedule>Immediately</Schedule>
+		# <UserPriority>Normal</UserPriority>
+		# <DeviceName>FLUOstar</DeviceName>
+		# </PHERAstar_Read_Plate>
+
+		# %CHERRY_PICK_384PP_TO_CORNINGBLACK_ECP_FP% -> ecp -> C:\Users\ACCESS\Documents\ACCESS_DOCUMENTS\PIPELINE\dev\DNAQminimized\CherryPick 384PP to CorningBlack.ecp
+
+		# %STANDARDS_TO_CORNINGBLACK_CSV_FP% -> Standards plate to corning black -> C:\Users\ACCESS\Documents\ACCESS_DOCUMENTS\PIPELINE\dev\DNAQminimized\template_384Standard_to_384CorningPSBlack_no_barcodes_tvol.csv
+
+		# %STANDARDS_PLATEMAP_ROWS% -> source and destination plate rows
+		# <Plate EchoPlateID="1" PlateName="DNAQ_STD" PlateType="384PP" Barcode="" LidType="" PlateCategory="Source" LocationURL="deck://Deck/1/1/" FinalLocation="deck://Deck/1/1/" PlateAccess="Sequential" PreRunActionSetName="Source" RunActionSetName="" PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNAQ_STD" />
+  		# <Plate EchoPlateID="2" PlateName="DNAQ_Black" PlateType="Corning_384PS_Black" Barcode="" LidType="" PlateCategory="Destination" LocationURL="deck://Deck/4/*/" FinalLocation="deck://Deck/3/*/" PlateAccess="Sequential" PreRunActionSetName="" RunActionSetName="" PostRunActionSetName="DNAQ_Black" StorageDeviceSetName="" EchoTemplate="DNAQ_Black" />
+
+  		# TODO: can we replace the text file message in "Your plates are quantified.txt" with something else?
+
+		# TODO: copy rundef to INBOX dir
+		
+		# TODO: move LIMS file to expt dir
+
+
 
 		return
 
@@ -702,10 +787,8 @@ class QuantSetupGUI:
 
 		# display message
 		if(is_error):
-			print("Error message : %s" % message)
 			self.txt_msg_panel.insert('1.0', message, ('msg_error'))
 		else:
-			print("Standard message : %s" % message)
 			self.txt_msg_panel.insert('1.0', message, ('msg_standard'))
 
 		return
@@ -754,7 +837,7 @@ class QuantSetupGUI:
 			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# validation check: there should be certain fields in the json file
-		expected_fields = ['RUN_ID', 'PLATES']
+		expected_fields = ['LIMS_PLATE_GROUP_ID', 'PLATES']
 		for expected_field in expected_fields:
 			if self.data_from_lims_file.has_key(expected_field):
 				if(args.debug == True):
@@ -763,47 +846,47 @@ class QuantSetupGUI:
 				self.display_message(True, "ERROR: Key field <%s> missing from this file. Cannot continue." % expected_field)
 				return False
 
-		self.data_summary["run_id"] 	= self.data_from_lims_file["RUN_ID"]
-		self.data_summary["num_plates"] = len(self.data_from_lims_file["PLATES"])
-		self.data_summary["plates"] 	= {}
+		self.data_summary['lims_plate_group_id'] 	= self.data_from_lims_file['LIMS_PLATE_GROUP_ID']
+		self.data_summary['num_plates'] = len(self.data_from_lims_file['PLATES'])
+		self.data_summary['plates'] 	= {}
 
 		if(args.debug == True):
-			print("Run ID = %s" % self.data_summary["run_id"])
-			print("Num plates found = %s" % self.data_summary["num_plates"])
+			print("Run ID = %s" % self.data_summary['lims_plate_group_id'])
+			print("Num plates found = %s" % self.data_summary['num_plates'])
 
 		# validation check: there should be at least one plate
-		if(self.data_summary["num_plates"] == 0):
+		if(self.data_summary['num_plates'] == 0):
 			self.display_message(True, "ERROR: Unable to identify any plates in this file. Cannot continue.")
 			return False
 
 		# set black plates required (n + 1 for standards intermediate plate)
-		self.num_black_plates_reqd = self.data_summary["num_plates"] + 1
+		self.num_black_plates_reqd = self.data_summary['num_plates'] + 1
 
 		# cycle through the plates in the file and extract key information
 		plate_index 					= 1
 		num_standards_types 			= 0
 		standards_types                 = {}
 
-		while plate_index <= self.data_summary["num_plates"]:
+		while plate_index <= self.data_summary['num_plates']:
 			s_plt_idx 					= str(plate_index)
 			
 			# store plate summary details
-			self.data_summary["plates"][s_plt_idx] 							= {}
-			self.data_summary["plates"][s_plt_idx]["barcode"] 				= self.data_from_lims_file["PLATES"][s_plt_idx]["BARCODE"]
-			self.data_summary["plates"][s_plt_idx]["library_prep_params"] 	= self.data_from_lims_file["PLATES"][s_plt_idx]["LIBRARY_PREP_PARAMS"]
-			self.data_summary["plates"][s_plt_idx]["standards_params"] 		= self.data_from_lims_file["PLATES"][s_plt_idx]["STANDARDS_PARAMS"]
+			self.data_summary['plates'][s_plt_idx] 							= {}
+			self.data_summary['plates'][s_plt_idx]['barcode'] 				= self.data_from_lims_file['PLATES'][s_plt_idx]['BARCODE']
+			self.data_summary['plates'][s_plt_idx]['library_prep_params'] 	= self.data_from_lims_file['PLATES'][s_plt_idx]['LIBRARY_PREP_PARAMS']
+			self.data_summary['plates'][s_plt_idx]['standards_params'] 		= self.data_from_lims_file['PLATES'][s_plt_idx]['STANDARDS_PARAMS']
 
-			if self.data_from_lims_file["PLATES"][s_plt_idx]["STANDARDS_PARAMS"] not in valid_quant_standards:
-				self.display_message(True, "ERROR: plate with barcode <%s> has a standards type of <%s> which is not currently supported. Cannot continue." % (self.data_from_lims_file["PLATES"][s_plt_idx]["BARCODE"], self.data_from_lims_file["PLATES"][s_plt_idx]["STANDARDS_PARAMS"]))
+			if self.data_from_lims_file['PLATES'][s_plt_idx]['STANDARDS_PARAMS'] not in valid_quant_standards:
+				self.display_message(True, "ERROR: plate with barcode <%s> has a standards type of <%s> which is not currently supported. Cannot continue." % (self.data_from_lims_file['PLATES'][s_plt_idx]['BARCODE'], self.data_from_lims_file['PLATES'][s_plt_idx]['STANDARDS_PARAMS']))
 				return False
 
 			# count number of types of standards plates, used to check not got a mixed set
-			if(self.data_from_lims_file["PLATES"][s_plt_idx]["STANDARDS_PARAMS"] in standards_types):
-				standards_types[self.data_from_lims_file["PLATES"][s_plt_idx]["STANDARDS_PARAMS"]] 	+= 1
+			if(self.data_from_lims_file['PLATES'][s_plt_idx]['STANDARDS_PARAMS'] in standards_types):
+				standards_types[self.data_from_lims_file['PLATES'][s_plt_idx]['STANDARDS_PARAMS']] 	+= 1
 			else:
-				standards_types[self.data_from_lims_file["PLATES"][s_plt_idx]["STANDARDS_PARAMS"]]	= 1
+				standards_types[self.data_from_lims_file['PLATES'][s_plt_idx]['STANDARDS_PARAMS']]	= 1
 
-			curr_wells 					= self.data_from_lims_file["PLATES"][s_plt_idx]["WELLS"]
+			curr_wells 					= self.data_from_lims_file['PLATES'][s_plt_idx]['WELLS']
 
 			# count numbers of samples and controls in this plate
 			count_sample_wells 			= 0
@@ -811,16 +894,16 @@ class QuantSetupGUI:
 			well_index 					= 0
 
 			while well_index < len(curr_wells):
-				if(curr_wells[well_index]["ROLE"] == "SAMPLE"):
+				if(curr_wells[well_index]['ROLE'] == "SAMPLE"):
 					count_sample_wells 	+= 1
 
-				if(curr_wells[well_index]["ROLE"] == "CONTROL"):
+				if(curr_wells[well_index]['ROLE'] == "CONTROL"):
 					count_control_wells += 1
 
 				well_index 				+= 1
 
-			self.data_summary["plates"][s_plt_idx]["count_sample_wells"] 	= count_sample_wells
-			self.data_summary["plates"][s_plt_idx]["count_control_wells"] 	= count_control_wells
+			self.data_summary['plates'][s_plt_idx]['count_sample_wells'] 	= count_sample_wells
+			self.data_summary['plates'][s_plt_idx]['count_control_wells'] 	= count_control_wells
 
 			plate_index 				+= 1
 
@@ -830,9 +913,9 @@ class QuantSetupGUI:
 			return False
 		else:
 			# fetch first and only key and store as the standards type for the group of plates
-			self.data_summary["standards_type"] = standards_types.keys()[0]
+			self.data_summary['standards_type'] = standards_types.keys()[0]
 
-		self.display_message(False, "LIMS file successfully validated. Plates found: %s" % str(self.data_summary["num_plates"]))
+		self.display_message(False, "LIMS file successfully validated. Plates found: %s" % str(self.data_summary['num_plates']))
 
 		if(args.debug == True):
 			print(pprint(self.data_summary))
@@ -856,7 +939,7 @@ class QuantSetupGUI:
 		self.txt_summary.insert('1.0', "Summary of File\n", ('tag_title'))
 		
 		self.txt_summary.insert(END, "Run ID \t\t: ")
-		self.txt_summary.insert(END, "%s\n" % self.data_summary.get('run_id'), ('tag_highlight'))
+		self.txt_summary.insert(END, "%s\n" % self.data_summary.get('lims_plate_group_id'), ('tag_highlight'))
 		
 		self.txt_summary.insert(END, "Standards set \t\t: ")
 		std_version_num = str(quant_standards[self.data_summary.get('standards_type')]['Version']['version_number'])
@@ -910,6 +993,248 @@ class QuantSetupGUI:
 
 		return
 
+	def generate_csv_files(self):
+		'''Generate the csv files required for the quantification setup
+
+		Creates the 3 csv files required for the Echo transfers:
+			1. DNA Source plate wells to pool wells on Standards plate
+			2. DNA Source plate wells to Corning Black plates
+			3. Standards plate ladder and pool wells to Corning Black plate 
+		'''
+
+		if(args.debug == True):
+			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+
+		if(not self.generate_sources_to_standards_csv_file()):
+			return False
+
+		return True
+
+
+	def generate_sources_to_standards_csv_file(self):
+		'''Generate the csv file for transferring DNA Source plate wells to pool wells on Standards plate'''
+
+		if(args.debug == True):
+			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+
+		# Source Plate Name,Source Plate Barcode,Source Plate Type,Source Well,Transfer Volume,Destination Plate Name,Destination Plate Barcode,Destination Plate Type,Destination well
+		# DNA_source_1,,384PP_AQ_SP_High,A1,100,DNAQ_STD,,384PP_Dest,A4
+
+		stnd_type 							= self.data_summary['standards_type']
+
+		# File 1: sources to pools on standards - each source sample or control goes to pool(s) on the standards plate according to the standards config
+		
+		csv_filepath_sources_to_standards 	= os.path.join(self.expt_directory, settings.get('Quantification').get('quant_filename_sources_to_standards_csv'))
+
+		# open csv file for writing, wb = write in binary format, overwrites the file if the file exists or creates a new file
+		with open(csv_filepath_sources_to_standards, 'wb') as csvfile:
+			# for csv file open in binary format.  delimiter is defaulted to comma, quote character is defaulted to doublequote, quoting defaults to quote minimal
+			csv_writer = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+			
+			# write header row
+			csv_writer.writerow(['Source Plate Name',
+								'Source Plate Barcode',
+								'Source Plate Type',
+								'Source Well',
+								'Transfer Volume',
+								'Destination Plate Name',
+								'Destination Plate Barcode',
+								'Destination Plate Type',
+								'Destination well'])
+
+			# create rows for each src plate sample and control for each pool on the standards plate
+			src_plt_type 				= '384PP_AQ_SP_High'
+			src_transfer_vol 			= 100 # TODO: this should come from a config
+			dest_plate_name 			= 'DNAQ_STD'
+			dest_plate_barcode 			= None
+			dest_plate_type 			= '384PP_Dest'
+
+			plt_idx 					= 1
+			while plt_idx <= self.data_summary['num_plates']:
+				s_plt_idx 					= str(plt_idx)
+
+				if(args.debug == True):
+					print("Plate indx = %s" % s_plt_idx)
+
+				src_plt_name 				= "DNA_source_%s" % s_plt_idx
+				src_plt_barcode 			= self.data_summary['plates'][s_plt_idx]['barcode']
+				
+				# fetch the wells for this plate
+				curr_wells 					= self.data_from_lims_file['PLATES'][s_plt_idx]['WELLS']
+
+				# fetch the initial pool position
+				initial_pool_posn 			= quant_standards[stnd_type]['Pools']['sources'][s_plt_idx]['initial_pool_posn']
+
+				# create csv rows for each pool
+				pool_idx 					= 1
+				num_pools 					= quant_standards[stnd_type]['Pools']['number_of_pools']
+				while pool_idx <= num_pools:
+
+					if(args.debug == True):
+						print("Pool indx = %s" % str(pool_idx))
+
+					if(pool_idx == 1):
+						dest_well 				= initial_pool_posn
+					else:
+						dest_well 				= calculate_standards_pooling_well_position(initial_pool_posn, pool_idx)
+						if(dest_well == None):
+							# error, unable to continue
+							self.display_message(True, "ERROR: Unable to determine valid pooling position for sources to standards plate csv creation. "\
+								"Source index <%s> pool index <%s>. Check number of pools vs initial positions in Standards confif file. Cannot continue." % (s_plt_idx, str(pool_idx)))
+							return False
+					
+					# create csv rows for each sample or control on the source plate
+					src_well_idx 					= 0
+					while src_well_idx < len(curr_wells):
+						s_src_well_idx = str(src_well_idx)
+
+						if(args.debug == True):
+							print("Well indx = %s" % s_src_well_idx)
+
+						if(curr_wells[src_well_idx]['ROLE'] == "SAMPLE" or curr_wells[src_well_idx]['ROLE'] == "CONTROL"):
+
+							src_well 				= curr_wells[src_well_idx]['POSITION']
+
+							# append line to csv
+							csv_writer.writerow([src_plt_name,
+								src_plt_barcode,
+								src_plt_type,
+								src_well,
+								src_transfer_vol,
+								dest_plate_name,
+								dest_plate_barcode,
+								dest_plate_type,
+								dest_well])
+
+						src_well_idx 				+= 1
+
+					pool_idx 					+= 1
+
+				plt_idx 					+= 1
+				
+
+
+
+
+	# 	lad_idx 			= 1
+	# num_ladder_wells 	= int(quant_standards[stnd_type]['Ladder']['number_of_ladder_wells'])
+
+	# quant_standards[stnd_type]['Ladder']['wells'] = {}
+
+	# while lad_idx <= num_ladder_wells:
+	# 	s_lad_idx 		= str(lad_idx)
+	# 	quant_standards[stnd_type]['Ladder']['wells'][s_lad_idx] 						= {}
+	# 	quant_standards[stnd_type]['Ladder']['wells'][s_lad_idx]['well_posn'] 			= str(config['Ladder'][s_lad_idx]['well_posn'])
+	# 	quant_standards[stnd_type]['Ladder']['wells'][s_lad_idx]['concentration_ng_ul']	= float(config['Ladder'][s_lad_idx]['concentration_ng_ul'])
+	# 	quant_standards[stnd_type]['Ladder']['wells'][s_lad_idx]['vol_to_dispense_nl'] 	= float(config['Ladder'][s_lad_idx]['vol_to_dispense_nl'])
+	# 	lad_idx 		+= 1
+
+	# # retrieve sub-section information for the pools
+	# src_idx 			= 1
+	# max_num_sources 	= int(quant_standards[stnd_type]['Pools']['max_num_sources'])
+
+	# quant_standards[stnd_type]['Pools']['sources'] = {}
+
+	# while src_idx <= max_num_sources:
+	# 	s_src_idx 		= str(src_idx)
+	# 	print("index : %s" % s_src_idx)
+	# 	pprint(config['Pools'][s_src_idx])
+	# 	quant_standards[stnd_type]['Pools']['sources'][s_src_idx] 						= {}
+	# 	quant_standards[stnd_type]['Pools']['sources'][s_src_idx]['initial_pool_posn'] 	= str(config['Pools'][s_src_idx]['initial_pool_posn'])
+	# 	src_idx 		+= 1	
+
+
+		# File 2: sources to black 				- each source sample or control is mapped to same well on black plates
+		
+
+		# File 3: standards to black 			- transfer of ladders and source pools from standards to black plate
+
+		return True
+
+# -----------------------------------------------------------------------------
+# Utility Methods
+# -----------------------------------------------------------------------------
+def check_and_create_directory(directory):
+	'''Check whether a directory exists and create it if not'''
+
+	if(args.debug == True):
+		print("In %s" % inspect.currentframe().f_code.co_name)
+
+	if(args.debug == True):
+		print("Attempting to create directory = %s" % directory)
+
+	# check if the directory exists and create it if not
+	if not os.path.exists(directory):
+		os.makedirs(directory)
+
+	return
+
+
+def regex_replace_field_in_xml(xml_string, re_string, replacement_string):
+	'''Use a Regular Expression to replace one value in an XML string with another'''
+
+	if(args.debug == True):
+		print("In %s" % inspect.currentframe().f_code.co_name)
+		print("XML string: %s" % xml_string)
+		print("RegEx string: %s" % re_string)
+		print("Replacement string: %s" % replacement_string)
+
+
+	# Substitute in a string to replace the regex string currently there
+	# substitutions		= {re_string: replacement_string, ...}
+	substitutions		= {re_string: replacement_string}
+	pattern 			= re.compile(r'%([^%]+)%')
+	xml_string_modified = re.sub(pattern, lambda m: substitutions[m.group(1)], xml_string)
+
+	if(args.debug == True):
+		print("Modified XML: %s" % xml_string_modified)
+
+	# return modified XML string
+	return xml_string_modified
+	
+
+def calculate_standards_pooling_well_position(initial_pool_posn, pool_index):
+	'''Given the initial pool well position and the pool index, work out where the pool well position should be
+
+	Args:
+		initial_pool_posn - the first pool position from the standards config file
+		pool_index 	      - the current pooling index which depends on number of pools to make
+
+	Assumption is that any additional pools are to the right of the initial pool.
+	'''
+
+	if(args.debug == True):
+		print("In %s" % inspect.currentframe().f_code.co_name)
+
+	# split initial position into row character and column number using a regex
+	match = re.match(r"([A-Z]+)([0-9]+)", initial_pool_posn, re.I)
+	if match:
+		items = match.groups() # e.g. items is ("A", "10")
+	else:
+		return None
+
+	s_row 			= items[0]
+	i_initial_col 	= int(items[1])
+
+	# add pool_index - 1 to the column number
+	new_col_num 	= i_initial_col + (pool_index - 1)
+
+	# check new column number not greater than 24 (assuming 384-well plate)
+	if(new_col_num > 24):
+		# error, extended beyond plate boundary
+		if(args.debug == True):
+			print("New column <%s> is greater than 24, cannot continue." % str(new_col_num))
+
+		return None
+
+	# concat row character to new column position and return
+	new_posn = s_row + str(new_col_num)
+
+	if(args.debug == True):
+		print("New pooling well position is %s" % new_posn)
+
+	return new_posn
+
 # -----------------------------------------------------------------------------
 # Common GUI Elements
 # -----------------------------------------------------------------------------
@@ -921,19 +1246,20 @@ def setup_styles_and_themes():
 
 	# to get the combobox to display properly without a grey border we need to apply a style theme
 	combobox_style 			= ttk.Style()
-	combobox_style.theme_create('combobox_style', parent = 'alt',
-				settings 	= {'TCombobox':
-                                {'configure':
-                                    {	'font':font_arial_normal,
-                                    	'foreground':fg_colour,
-                                     	'selectforeground': fg_colour,
-                                     	'fieldbackground': bg_colour,
-                                     	'background': bg_colour,
-                                     	'selectbackground': bg_colour
-                                  	}
-                                }
-                            }
-                         )
+	combobox_style.theme_create('combobox_style', 
+								parent = 'alt',
+								settings 	= {'TCombobox':
+				                                {'configure':
+				                                    {	'font':font_arial_normal,
+				                                    	'foreground':fg_colour,
+				                                     	'selectforeground': fg_colour,
+				                                     	'fieldbackground': bg_colour,
+				                                     	'background': bg_colour,
+				                                     	'selectbackground': bg_colour
+				                                  	}
+				                                }
+				                            }
+				                         )
 	combobox_style.theme_use('combobox_style')
 
 	return
