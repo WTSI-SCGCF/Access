@@ -207,7 +207,7 @@ def parse_access_system_config_file():
 				'quant_filename_standards_ss2':'str',
 				'quant_filename_setup_rundef_template':'str',
 				'quant_filename_sources_to_standards_csv':'str',
-				'quant_filename_sources_to_blacks_csv':'str',
+				'quant_filename_sources_to_black_plts_csv':'str',
 				'quant_filename_standards_to_black_csv':'str',
 				'quant_cdna_min_conc':'flt',
 				'quant_cdna_max_conc':'flt',
@@ -285,11 +285,13 @@ def parse_quantification_standards_config_file(stnd_type):
 		'Version':{'version_number':'flt'},
 		'Information':{'kit_name':'str',
 				'manufacturer':'str',
-				'order_number':'str',
-				'volume_of_stds_to_transfer_nl':'flt'},
+				'order_number':'str'},
 		'Ladder':{'number_of_ladder_wells':'int',
 				'sheared_size_of_dna_kb':'flt'},
 		'Pools':{'number_of_pools':'int',
+				'vol_src_to_pool_nl':'int',
+				'vol_src_to_black_plate_nl':'int',
+				'vol_pool_to_black_plate_nl':'int',
 				'max_num_sources':'int'}
 	}
 
@@ -1008,17 +1010,20 @@ class QuantSetupGUI:
 		if(not self.generate_sources_to_standards_csv_file()):
 			return False
 
+		if(not self.generate_sources_to_corning_black_csv_file()):
+			return False
+
 		return True
 
 
 	def generate_sources_to_standards_csv_file(self):
-		'''Generate the csv file for transferring DNA Source plate wells to pool wells on Standards plate'''
+		'''Generate the csv file for transferring DNA Source plate wells to pool wells on Standards plate
+
+		Generation varies depending on number of pools required.
+		'''
 
 		if(args.debug == True):
 			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
-
-		# Source Plate Name,Source Plate Barcode,Source Plate Type,Source Well,Transfer Volume,Destination Plate Name,Destination Plate Barcode,Destination Plate Type,Destination well
-		# DNA_source_1,,384PP_AQ_SP_High,A1,100,DNAQ_STD,,384PP_Dest,A4
 
 		stnd_type 							= self.data_summary['standards_type']
 
@@ -1044,7 +1049,7 @@ class QuantSetupGUI:
 
 			# create rows for each src plate sample and control for each pool on the standards plate
 			src_plt_type 				= '384PP_AQ_SP_High'
-			src_transfer_vol 			= 100 # TODO: this should come from a config
+			src_transfer_vol 			= quant_standards[stnd_type]['Pools']['vol_src_to_pool_nl'] # volume from standards config file
 			dest_plate_name 			= 'DNAQ_STD'
 			dest_plate_barcode 			= None
 			dest_plate_type 			= '384PP_Dest'
@@ -1093,13 +1098,11 @@ class QuantSetupGUI:
 
 						if(curr_wells[src_well_idx]['ROLE'] == "SAMPLE" or curr_wells[src_well_idx]['ROLE'] == "CONTROL"):
 
-							src_well 				= curr_wells[src_well_idx]['POSITION']
-
 							# append line to csv
 							csv_writer.writerow([src_plt_name,
 								src_plt_barcode,
 								src_plt_type,
-								src_well,
+								curr_wells[src_well_idx]['POSITION'],
 								src_transfer_vol,
 								dest_plate_name,
 								dest_plate_barcode,
@@ -1150,6 +1153,87 @@ class QuantSetupGUI:
 		# File 3: standards to black 			- transfer of ladders and source pools from standards to black plate
 
 		return True
+
+	def generate_sources_to_corning_black_csv_file(self):
+		'''Generate the csv file for transferring DNA Source plate wells to corning black plates
+
+		This transfer is a straight map of any samples and controls to their equivalent wells on the corresponding black plate.
+		'''
+
+		if(args.debug == True):
+			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+
+		stnd_type 							= self.data_summary['standards_type']
+
+		# File 1: sources to pools on standards - each source sample or control goes to pool(s) on the standards plate according to the standards config
+		
+		csv_filepath_sources_to_black_plts 	= os.path.join(self.expt_directory, settings.get('Quantification').get('quant_filename_sources_to_black_plts_csv'))
+
+		# open csv file for writing, wb = write in binary format, overwrites the file if the file exists or creates a new file
+		with open(csv_filepath_sources_to_black_plts, 'wb') as csvfile:
+			# for csv file open in binary format.  delimiter is defaulted to comma, quote character is defaulted to doublequote, quoting defaults to quote minimal
+			csv_writer = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+			
+			# write header row
+			csv_writer.writerow(['Source Plate Name',
+								'Source Plate Barcode',
+								'Source Plate Type',
+								'Source Well',
+								'Transfer Volume',
+								'Destination Plate Name',
+								'Destination Plate Barcode',
+								'Destination Plate Type',
+								'Destination well'])
+
+			# create rows for each src plate sample and control for each pool on the standards plate
+			src_plt_type 				= '384PP_AQ_SP_High'
+			src_transfer_vol 			= quant_standards[stnd_type]['Pools']['vol_src_to_black_plate_nl'] # volume from standards config file
+			
+			dest_plate_barcode 			= None
+			dest_plate_type 			= 'Corning_384PS_Black'
+
+			plt_idx 					= 1
+			while plt_idx <= self.data_summary['num_plates']:
+				s_plt_idx 					= str(plt_idx)
+
+				if(args.debug == True):
+					print("Plate indx = %s" % s_plt_idx)
+
+				src_plt_name 				= "DNA_source_%s" % s_plt_idx
+				src_plt_barcode 			= self.data_summary['plates'][s_plt_idx]['barcode']
+
+				dest_plate_name 			= "DNAQ_Black_%s" % s_plt_idx
+				
+				# fetch the wells for this plate
+				curr_wells 					= self.data_from_lims_file['PLATES'][s_plt_idx]['WELLS']
+
+				# create csv rows for each sample or control on the source plate
+				src_well_idx 				= 0
+				while src_well_idx < len(curr_wells):
+					s_src_well_idx = str(src_well_idx)
+
+					if(args.debug == True):
+						print("Well indx = %s" % s_src_well_idx)
+
+					if(curr_wells[src_well_idx]['ROLE'] == "SAMPLE" or curr_wells[src_well_idx]['ROLE'] == "CONTROL"):
+
+ 						# append line to csv
+						csv_writer.writerow([src_plt_name,
+							src_plt_barcode,
+							src_plt_type,
+							curr_wells[src_well_idx]['POSITION'],
+							src_transfer_vol,
+							dest_plate_name,
+							dest_plate_barcode,
+							dest_plate_type,
+							curr_wells[src_well_idx]['POSITION']])
+
+					src_well_idx 			+= 1
+
+				plt_idx 				+= 1
+
+		return True
+
 
 # -----------------------------------------------------------------------------
 # Utility Methods
