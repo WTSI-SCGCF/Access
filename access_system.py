@@ -63,33 +63,12 @@ Outputs:
 ===============================================================================
 
 
+TODO:
+* add logging with a generic append to log function to the expt dir,
+  this should log key information only, e.g. user choices, refs to files and where. 
+  they have been written. Timestamp per entry row.
 
-
-
-Standards setup file
---------------------
-Local standards layout file containing the following details:
-*  Version number of this file
-*  
-*  DNA Standards ladder locations and concentrations by sample type (N.B. may be one set for cDNA, another for gDNA 
-   because may expect different sample concentration ranges for these types).
-   i.e. lists of locations and concentrations:
-   gDNA
-   		A23, 500 ng/ul
-   		B23, 300 ng/ul
-   		...
-   		H23, 0 ng/ul
-   cDNA
-   		A23, 200 ng/ul
-   		B23, 150 ng/ul
-   		...
-   		H23, 0 ng/ul
-*  Starting locations where DNA plate pools should be put (max 16 sources?)
-*  Number of pools to make e.g. 3
-
-
-
-
+* 
 
 
 '''
@@ -102,6 +81,7 @@ import csv 			# for reading/writing csv files
 import inspect 		# for getting method name
 import re 			# for regex expressions
 import shutil 		# for file copying
+import codecs 		# for reading utf-8 files
 
 from configobj 		import ConfigObj 		# for reading config files
 from Tkinter        import * 				# for the GUI interfaces
@@ -115,6 +95,8 @@ from pprint import pprint # for pretty printing e.g. lists and dictionaries
 # -----------------------------------------------------------------------------
 # Variables
 # -----------------------------------------------------------------------------
+script_version 				= "1.0"
+
 config_filename 			= 'config/access_system.cfg' # configuration filename
 valid_modes     			= ['quantsetup'] # valid program modes
 args     					= {} # stores parsed command line arguments
@@ -193,11 +175,12 @@ def parse_access_system_config_file():
 	options_list = {
 		'Version':{'version_number':'flt'},
 		'Common':{'dir_tempo_inbox':'str', 
-				'filepath_ecp_armadillo':'str',
-				'filepath_ecp_greiner_black':'str',
-				'filepath_ecp_third_type':'str',
+				'filepath_ecp_384armadillo':'str',
+				'filepath_ecp_384corningblack':'str',
+				'filepath_ecp_384dest':'str',
 				'dir_expt_root':'str',
 				'dir_rundef_templates':'str',
+				'src_plts_initial_stk_posn':'int',
 				'gui_width':'int',
 				'gui_height':'int',
 				'gui_x_posn':'int',
@@ -284,7 +267,8 @@ def parse_quantification_standards_config_file(stnd_type):
 	# Verify that the options imported from the file match with an expected list maintained here
 	options_list = {
 		'Version':{'version_number':'flt'},
-		'Information':{'kit_name':'str',
+		'Information':{'stnd_plt_stk_posn':'int'},
+		'Kit':{'kit_name':'str',
 				'manufacturer':'str',
 				'order_number':'str'},
 		'Ladder':{'num_of_ladder_wells':'int',
@@ -404,9 +388,9 @@ class QuantSetupGUI:
 	# -----------------------------------------------------------------------------
 	# Variables
 	# -----------------------------------------------------------------------------
-	selected_lims_file 		= "" # holds selected lims file filepath
-	data_from_lims_file 	= {} # holds selected file data once read
-	data_summary 			= {} # holds summarised data
+	lims_src_plt_grp_filepath		= "" # holds selected lims plate grouping file filepath
+	data_lims_src_plt_grp 			= {} # holds selected lims plate grouping data once read from file
+	data_summary 					= {} # holds summarised data
 
 	def __init__(self, master):
 		'''Initialise a new frame for the GUI'''
@@ -431,8 +415,9 @@ class QuantSetupGUI:
 		# ---------------------------------------------------------------------
 		# Row 0 - Team name and Sanger logo
 		# ---------------------------------------------------------------------
+		s_script_info = "Single Cell Genomics Core Facility\nScript Version: %s" % script_version
 		frame.grid_rowconfigure(0, weight=1)
-		lbl_scgcf_params 		= {'widg_text':"Single Cell Genomics Core Facility", 
+		lbl_scgcf_params 		= {'widg_text':s_script_info, 
 									'widg_fg':'#18631e',
 									'widg_font':'Verdana 12 italic',
 									'grid_row':0,
@@ -520,9 +505,6 @@ class QuantSetupGUI:
 		# ---------------------------------------------------------------------
 		# Row 5 - Black plates required labels
 		# ---------------------------------------------------------------------
-		#TODO:
-		# Validate num blk plates on pressing create files button.
-
 		frame.grid_rowconfigure(5, weight=1)
 		lbl_blk_plts_req_params = {'widg_text':"Number of black plates needed (incl. for standards) : ", 
 									'grid_row':5,
@@ -619,20 +601,20 @@ class QuantSetupGUI:
 			print("LIMS file directory: %s" % limsdir)
 
 		# open file dialog and save selection N.B. if path not recognised it opens anyway
-		self.selected_lims_file = askopenfilename(title  = "Select LIMS plate grouping file", initialdir = limsdir)
+		self.lims_src_plt_grp_filepath = askopenfilename(title  = "Select LIMS plate grouping file", initialdir = limsdir)
 
 		# update the lable to display the filepath
-		self.lbl_lims_fp.configure(text = self.selected_lims_file)
+		self.lbl_lims_fp.configure(text = self.lims_src_plt_grp_filepath)
 
-		if((len(self.selected_lims_file) > 0) and (os.path.isfile(self.selected_lims_file))):
+		if((len(self.lims_src_plt_grp_filepath) > 0) and (os.path.isfile(self.lims_src_plt_grp_filepath))):
 			if(args.debug == True):
-				print("File chosen: %s" % self.selected_lims_file)
+				print("File chosen: %s" % self.lims_src_plt_grp_filepath)
 
 			# read file into memory
-			self.read_json_file()
+			self.read_lims_plate_grouping_json_file()
 
 			# validate data and create summary data
-			if(self.validate_data_from_lims_file() == True):
+			if(self.validate_data_lims_src_plt_grp() == True):
 
 				# at this point we need to know which standards we are using e.g. SS2 and load the relevant file
 				parse_quantification_standards_config_file(self.data_summary['standards_type'])
@@ -695,14 +677,21 @@ class QuantSetupGUI:
 				print("Failed to generate RunDef file")
 			return
 
-
   		# TODO: can we replace the text file message in "Your plates are quantified.txt" with something else?
 
-		# TODO: copy rundef to INBOX dir
-		
-		# TODO: move LIMS file to expt dir
+		# create a new copy of the LIMS file and place it in the experiment directory
+		try:
+			lims_src_plt_grp_filename 	= os.path.basename(self.lims_src_plt_grp_filepath)
+			new_expt_filepath 			= os.path.join(self.expt_directory, lims_src_plt_grp_filename)
 
+			shutil.copyfile(self.lims_src_plt_grp_filepath, new_expt_filepath)
+			self.display_message(False, "The RunDef file should now be in the Tempo Inbox and ready to run from Tempo.\nYou can now Quit or open another LIMS file.")
+		except Exception as e:
+			if(args.debug == True):
+				print("Failed to copy LIMS file into experiment directory")
 
+			self.display_message(True, "ERROR: Exception copying the LIMS plate grouping file into the experiment directory.\nError Message: <%s>" % str(e))
+			return False
 
 		return
 
@@ -743,7 +732,7 @@ class QuantSetupGUI:
 
 		return
 
-	def read_json_file(self):
+	def read_lims_plate_grouping_json_file(self):
 		'''Reads the data from a json file'''
 
 		if(args.debug == True):
@@ -751,18 +740,18 @@ class QuantSetupGUI:
 
 		# read the file N.B. the with clause closes the file as soon as we are out of the with context.
 		# don't print or do anything in the with open clause as that keeps the file open longer.
-		with open(self.selected_lims_file) as data_file:    
-			self.data_from_lims_file = json.load(data_file)
+		with open(self.lims_src_plt_grp_filepath) as data_file:    
+			self.data_lims_src_plt_grp = json.load(data_file)
 		
 		if(args.debug == True):
 			print("LIMS file data:")
 			print('-' * 80)
-			pprint(self.data_from_lims_file)
+			pprint(self.data_lims_src_plt_grp)
 			print('-' * 80)
 
 		return
 
-	def validate_data_from_lims_file(self):
+	def validate_data_lims_src_plt_grp(self):
 		'''Validates the data extracted from the LIMS json file
 
 		This file is created either by the LIMS or manually. It holds the details about the grouping of plates
@@ -778,54 +767,54 @@ class QuantSetupGUI:
 		# validation check: there should be certain fields in the json file
 		expected_fields = ['LIMS_PLATE_GROUP_ID', 'PLATES']
 		for expected_field in expected_fields:
-			if self.data_from_lims_file.has_key(expected_field):
+			if self.data_lims_src_plt_grp.has_key(expected_field):
 				if(args.debug == True):
 					print("Field located : %s" % expected_field)
 			else:
 				self.display_message(True, "ERROR: Key field <%s> missing from this file. Cannot continue." % expected_field)
 				return False
 
-		self.data_summary['lims_plate_group_id'] 	= self.data_from_lims_file['LIMS_PLATE_GROUP_ID']
-		self.data_summary['num_plates'] = len(self.data_from_lims_file['PLATES'])
-		self.data_summary['plates'] 	= {}
+		self.data_summary['lims_plate_group_id'] 	= self.data_lims_src_plt_grp['LIMS_PLATE_GROUP_ID']
+		self.data_summary['num_src_plts'] 			= len(self.data_lims_src_plt_grp['PLATES'])
+		self.data_summary['plates'] 				= {}
 
 		if(args.debug == True):
-			print("Run ID = %s" % self.data_summary['lims_plate_group_id'])
-			print("Num plates found = %s" % self.data_summary['num_plates'])
+			print("Run ID           = %s" % self.data_summary['lims_plate_group_id'])
+			print("Num plates found = %s" % self.data_summary['num_src_plts'])
 
 		# validation check: there should be at least one plate
-		if(self.data_summary['num_plates'] == 0):
+		if(self.data_summary['num_src_plts'] == 0):
 			self.display_message(True, "ERROR: Unable to identify any plates in this file. Cannot continue.")
 			return False
 
 		# set black plates required (n + 1 for standards intermediate plate)
-		self.num_black_plates_reqd = self.data_summary['num_plates'] + 1
+		self.num_black_plates_reqd = self.data_summary['num_src_plts'] + 1
 
 		# cycle through the plates in the file and extract key information
 		plate_index 					= 1
 		num_standards_types 			= 0
 		standards_types                 = {}
 
-		while plate_index <= self.data_summary['num_plates']:
+		while plate_index <= self.data_summary['num_src_plts']:
 			s_plt_idx 					= str(plate_index)
 			
 			# store plate summary details
 			self.data_summary['plates'][s_plt_idx] 							= {}
-			self.data_summary['plates'][s_plt_idx]['barcode'] 				= self.data_from_lims_file['PLATES'][s_plt_idx]['BARCODE']
-			self.data_summary['plates'][s_plt_idx]['library_prep_params'] 	= self.data_from_lims_file['PLATES'][s_plt_idx]['LIBRARY_PREP_PARAMS']
-			self.data_summary['plates'][s_plt_idx]['standards_params'] 		= self.data_from_lims_file['PLATES'][s_plt_idx]['STANDARDS_PARAMS']
+			self.data_summary['plates'][s_plt_idx]['barcode'] 				= self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['BARCODE']
+			self.data_summary['plates'][s_plt_idx]['library_prep_params'] 	= self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['LIBRARY_PREP_PARAMS']
+			self.data_summary['plates'][s_plt_idx]['standards_params'] 		= self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['STANDARDS_PARAMS']
 
-			if self.data_from_lims_file['PLATES'][s_plt_idx]['STANDARDS_PARAMS'] not in valid_quant_standards:
-				self.display_message(True, "ERROR: plate with barcode <%s> has a standards type of <%s> which is not currently supported. Cannot continue." % (self.data_from_lims_file['PLATES'][s_plt_idx]['BARCODE'], self.data_from_lims_file['PLATES'][s_plt_idx]['STANDARDS_PARAMS']))
+			if self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['STANDARDS_PARAMS'] not in valid_quant_standards:
+				self.display_message(True, "ERROR: plate with barcode <%s> has a standards type of <%s> which is not currently supported. Cannot continue." % (self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['BARCODE'], self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['STANDARDS_PARAMS']))
 				return False
 
 			# count number of types of standards plates, used to check not got a mixed set
-			if(self.data_from_lims_file['PLATES'][s_plt_idx]['STANDARDS_PARAMS'] in standards_types):
-				standards_types[self.data_from_lims_file['PLATES'][s_plt_idx]['STANDARDS_PARAMS']] 	+= 1
+			if(self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['STANDARDS_PARAMS'] in standards_types):
+				standards_types[self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['STANDARDS_PARAMS']] 	+= 1
 			else:
-				standards_types[self.data_from_lims_file['PLATES'][s_plt_idx]['STANDARDS_PARAMS']]	= 1
+				standards_types[self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['STANDARDS_PARAMS']]	= 1
 
-			curr_wells 					= self.data_from_lims_file['PLATES'][s_plt_idx]['WELLS']
+			curr_wells 					= self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['WELLS']
 
 			# count numbers of samples and controls in this plate
 			count_sample_wells 			= 0
@@ -854,7 +843,7 @@ class QuantSetupGUI:
 			# fetch first and only key and store as the standards type for the group of plates
 			self.data_summary['standards_type'] = standards_types.keys()[0]
 
-		self.display_message(False, "LIMS file successfully validated. Plates found: %s" % str(self.data_summary['num_plates']))
+		self.display_message(False, "LIMS file successfully validated. Plates found: %s\nPlease check and indicate how many black plates are in stack 4 and press 'Create Access Files'" % str(self.data_summary['num_src_plts']))
 
 		if(args.debug == True):
 			print(pprint(self.data_summary))
@@ -872,41 +861,49 @@ class QuantSetupGUI:
 
 		# define tags for formatting text
 		self.txt_summary.tag_configure('tag_title', font='arial 18 bold', foreground=fg_ok_colour, relief='raised',justify='center', underline='True')
-		self.txt_summary.tag_configure('tag_highlight', font='arial 16 bold', foreground=fg_ok_colour)
+		self.txt_summary.tag_configure('tag_hl', font='arial 16 bold', foreground=fg_ok_colour)
+		self.txt_summary.tag_configure('tag_bg_grey', background='#e5e5e5') # grey background
 
 		# insert text for summary
 		self.txt_summary.insert('1.0', "Summary of File\n", ('tag_title'))
 		
-		self.txt_summary.insert(END, "Run ID \t\t: ")
-		self.txt_summary.insert(END, "%s\n" % self.data_summary.get('lims_plate_group_id'), ('tag_highlight'))
+		self.txt_summary.insert(END, "LIMS plate grouping ID \t\t\t: ")
+		self.txt_summary.insert(END, "%s\n" % self.data_summary.get('lims_plate_group_id'), ('tag_hl'))
 		
-		self.txt_summary.insert(END, "Standards set \t\t: ")
+		self.txt_summary.insert(END, "Standards set \t\t\t: ")
 		std_version_num = str(quant_standards[self.data_summary.get('standards_type')]['Version']['version_number'])
-		self.txt_summary.insert(END, "%s  (version: %s)\n" % (self.data_summary.get('standards_type'), std_version_num), ('tag_highlight'))
+		self.txt_summary.insert(END, "%s  (version: %s)\n" % (self.data_summary.get('standards_type'), std_version_num), ('tag_hl'))
 		
-		self.txt_summary.insert(END, "Library prep set \t\t: ")
+		# TODO: add library prep set details 
+		# self.txt_summary.insert(END, "Library prep set \t\t: ")
 		# lib_prep_version_num = str(lib_prep_standards[self.data_summary.get('lib_prep_type')]['Version']['version_number'])
-		self.txt_summary.insert(END, "%s  (version: %s)\n" % ("????", "???"), ('tag_highlight'))
-		# self.txt_summary.insert(END, "%s  (version: %s)\n" % (self.data_summary.get('lib_prep_type'), lib_prep_version_num), ('tag_highlight'))
+		# self.txt_summary.insert(END, "%s  (version: %s)\n" % (self.data_summary.get('lib_prep_type'), lib_prep_version_num), ('tag_hl'))
 		
-		self.txt_summary.insert(END, "Number of plates \t\t: ")
-		self.txt_summary.insert(END, "%s\n\n" % self.data_summary.get('num_plates'), ('tag_highlight'))
+		self.txt_summary.insert(END, "Num DNA source plates \t\t\t: ")
+		self.txt_summary.insert(END, "%s\n\n" % self.data_summary.get('num_src_plts'), ('tag_hl'))
 
 		# insert a row for each plate
-		# TODO: add stripes; make every even numbered row light grey background to make it easier on the eye
+		# every odd numbered row has light grey background to make it easier on the eye
 		plate_index = 1
 		for plate in self.data_summary.get('plates'):
 			s_plt_idx = str(plate_index)
-			self.txt_summary.insert(END, "[ %s ] \tBarcode \t: " % s_plt_idx)
-			self.txt_summary.insert(END, "%s" % self.data_summary.get('plates').get(s_plt_idx).get('barcode'), ('tag_highlight'))
-			self.txt_summary.insert(END, "\t\tNum Samples\t: ")
-			self.txt_summary.insert(END, "%s" % self.data_summary.get('plates').get(s_plt_idx).get('count_sample_wells'), ('tag_highlight'))
-			self.txt_summary.insert(END, "\t\tNum Controls\t: ")
-			self.txt_summary.insert(END, "%s\n" % self.data_summary.get('plates').get(s_plt_idx).get('count_control_wells'), ('tag_highlight'))
+
+			bg_tags = ()
+			hl_tags = ('tag_hl')
+			if(plate_index % 2 == 1):
+				bg_tags = ('tag_bg_grey')
+				hl_tags = ('tag_bg_grey', 'tag_hl')
+
+			self.txt_summary.insert(END, "[ %s ] \tBarcode \t: " % s_plt_idx, bg_tags)
+			self.txt_summary.insert(END, "%s" % self.data_summary.get('plates').get(s_plt_idx).get('barcode'), hl_tags)
+			self.txt_summary.insert(END, "\t\tNum Samples\t: ", bg_tags)
+			self.txt_summary.insert(END, "%s" % self.data_summary.get('plates').get(s_plt_idx).get('count_sample_wells'), hl_tags)
+			self.txt_summary.insert(END, "\t\tNum Controls\t: ", bg_tags)
+			self.txt_summary.insert(END, "%s\n" % self.data_summary.get('plates').get(s_plt_idx).get('count_control_wells'), hl_tags)
 			plate_index += 1
 
 		# set required plates variable to num plates + 1 (for standards int plate)
-		self.var_num_blk_plts_reqd.set(str(self.data_summary.get('num_plates') + 1))
+		self.var_num_blk_plts_reqd.set(self.data_summary.get('num_src_plts') + 1)
 
 		return
 
@@ -915,6 +912,9 @@ class QuantSetupGUI:
 
 		if(args.debug == True):
 			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+
+		# clear the filepath 
+		self.lbl_lims_fp.configure(text = "")
 
 		# clear the summary text and message panel
 		self.txt_summary.delete('1.0', END)
@@ -954,13 +954,13 @@ class QuantSetupGUI:
 			return False
 		elif(num_blk_deck == 0):
 			# error user should set to num in stack
-			self.display_message(True, "ERROR: Please load sufficient black plates (%s or more required) into stack four "\
+			self.display_message(True, "ERROR: Please load sufficient black plates (%s or more required) into stack 4 "\
 				"and use the dropdown entry field to set how many black plates there are now in the stack." % str(num_blk_reqd))
 			return False
 		elif(num_blk_deck < num_blk_reqd):
 			# error user needs to load at least reqd plates to stack
 			self.display_message(True, "ERROR: Insufficient black plates (%s or more required), please add more and use the "\
-				"dropdown entry field to set how many black plates there are now in the stack." % str(num_blk_reqd))
+				"dropdown entry field to set how many black plates there are now in stack 4." % str(num_blk_reqd))
 			return False
 		if askyesno('Verify', 'This will generate the Access System RunDef and Echo files. Are you sure?'):
 			self.display_message(False, "Starting file creation process, please wait...")
@@ -1030,11 +1030,11 @@ class QuantSetupGUI:
 
 		stnd_type 							= self.data_summary['standards_type']
 		
-		# csv filepath set in confguration file
-		csv_filepath_sources_to_standards 	= os.path.join(self.expt_directory, settings.get('Quantification').get('quant_filename_sources_to_standards_csv'))
-
 		# open csv file for writing, wb = write in binary format, overwrites the file if the file exists or creates a new file
 		try:
+			# csv filepath set in confguration file
+			csv_filepath_sources_to_standards 	= os.path.join(self.expt_directory, settings.get('Quantification').get('quant_filename_sources_to_standards_csv'))
+
 			with open(csv_filepath_sources_to_standards, 'wb') as csvfile:
 				# for csv file open in binary format.  delimiter is defaulted to comma, quote character is defaulted to doublequote, quoting defaults to quote minimal
 				csv_writer = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
@@ -1058,17 +1058,17 @@ class QuantSetupGUI:
 				dest_plate_type 			= '384PP_Dest'
 
 				i_plt_idx 					= 1
-				while i_plt_idx <= self.data_summary['num_plates']:
+				while i_plt_idx <= self.data_summary['num_src_plts']:
 					s_plt_idx 					= str(i_plt_idx)
 
 					if(args.debug == True):
 						print("Plate indx = %s" % s_plt_idx)
 
-					src_plt_name 				= "DNA_source_%s" % s_plt_idx
+					src_plt_name 				= "DNAQ_source_%s" % s_plt_idx
 					src_plt_barcode 			= self.data_summary['plates'][s_plt_idx]['barcode']
 					
 					# fetch the wells for this plate
-					curr_wells 					= self.data_from_lims_file['PLATES'][s_plt_idx]['WELLS']
+					curr_wells 					= self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['WELLS']
 
 					# fetch the pool position on the standards plate (N.B. limit of 1 intermediate pool currently )
 					standards_plt_pool_locn 	= quant_standards[stnd_type]['Pools']['sources'][s_plt_idx]['standards_plt_pool_locn']
@@ -1110,10 +1110,10 @@ class QuantSetupGUI:
 					i_plt_idx 					+= 1
 
 		except IOError as e:
-			self.display_message(True, "ERROR: IOException writing Echo csv for the Standards intermediate plate to it's Black plate. Error Code: <%s> Message: <%s>" % (str(e.errno), e.strerror))
+			self.display_message(True, "ERROR: IOException writing Echo csv for the Standards intermediate plate to it's Black plate.\nError Code: <%s> Message: <%s>" % (str(e.errno), e.strerror))
 			return False
 		except Exception as ex:
-			self.display_message(True, "ERROR: Exception writing Echo csv for the Standards intermediate plate to it's Black plate. Error Message: <%s>" % str(ex))
+			self.display_message(True, "ERROR: Exception writing Echo csv for the Standards intermediate plate to it's Black plate.\nError Message: <%s>" % str(ex))
 			return False
 
 		return True
@@ -1129,11 +1129,11 @@ class QuantSetupGUI:
 
 		stnd_type 							= self.data_summary['standards_type']
 
-		# csv filepath set in confguration file
-		csv_filepath_sources_to_black_plts 	= os.path.join(self.expt_directory, settings.get('Quantification').get('quant_filename_sources_to_black_plts_csv'))
-
 		# open csv file for writing, wb = write in binary format, overwrites the file if the file exists or creates a new file
 		try:
+			# csv filepath set in confguration file
+			csv_filepath_sources_to_black_plts 	= os.path.join(self.expt_directory, settings.get('Quantification').get('quant_filename_sources_to_black_plts_csv'))
+
 			with open(csv_filepath_sources_to_black_plts, 'wb') as csvfile:
 				# for csv file open in binary format.  delimiter is defaulted to comma, quote character is defaulted to doublequote, quoting defaults to quote minimal
 				csv_writer = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
@@ -1157,19 +1157,19 @@ class QuantSetupGUI:
 				dest_plate_type 			= 'Corning_384PS_Black'
 
 				i_plt_idx 					= 1
-				while i_plt_idx <= self.data_summary['num_plates']:
+				while i_plt_idx <= self.data_summary['num_src_plts']:
 					s_plt_idx 					= str(i_plt_idx)
 
 					if(args.debug == True):
 						print("s_plt_idx - %s" % s_plt_idx)
 
-					src_plt_name 				= "DNA_source_%s" % s_plt_idx
+					src_plt_name 				= "DNAQ_source_%s" % s_plt_idx
 					src_plt_barcode 			= self.data_summary['plates'][s_plt_idx]['barcode']
 
 					dest_plate_name 			= "DNAQ_Black_%s" % s_plt_idx
 					
 					# fetch the wells for this plate
-					curr_wells 					= self.data_from_lims_file['PLATES'][s_plt_idx]['WELLS']
+					curr_wells 					= self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['WELLS']
 
 					# create csv rows for each sample or control on the source plate
 					i_src_well_idx 				= 0
@@ -1197,10 +1197,10 @@ class QuantSetupGUI:
 					i_plt_idx 				+= 1
 
 		except IOError as e:
-			self.display_message(True, "ERROR: IOException writing Echo csv for the Standards intermediate plate to it's Black plate. Error Code: <%s> Message: <%s>" % (str(e.errno), e.strerror))
+			self.display_message(True, "ERROR: IOException writing Echo csv for the Standards intermediate plate to it's Black plate.\nError Code: <%s> Message: <%s>" % (str(e.errno), e.strerror))
 			return False
 		except Exception as ex:
-			self.display_message(True, "ERROR: Exception writing Echo csv for the Standards intermediate plate to it's Black plate. Error Message: <%s>" % str(ex))
+			self.display_message(True, "ERROR: Exception writing Echo csv for the Standards intermediate plate to it's Black plate.\nError Message: <%s>" % str(ex))
 			return False
 
 		return True
@@ -1217,14 +1217,14 @@ class QuantSetupGUI:
 
 		stnd_type 							= self.data_summary['standards_type']
 
-		# csv filepath set in confguration file
-		csv_filepath_standards_to_black 	= os.path.join(self.expt_directory, settings.get('Quantification').get('quant_filename_standards_to_black_csv'))
-
-		if(args.debug == True):
-			print("csv_filepath_standards_to_black = %s" % csv_filepath_standards_to_black)
-
 		# open csv file for writing, wb = write in binary format, overwrites the file if the file exists or creates a new file
 		try:
+			# csv filepath set in confguration file
+			csv_filepath_standards_to_black 	= os.path.join(self.expt_directory, settings.get('Quantification').get('quant_filename_standards_to_black_csv'))
+
+			if(args.debug == True):
+				print("csv_filepath_standards_to_black = %s" % csv_filepath_standards_to_black)
+
 			with open(csv_filepath_standards_to_black, 'wb') as csvfile:
 				# for csv file open in binary format.  delimiter is defaulted to comma, quote character is defaulted to doublequote, quoting defaults to quote minimal
 				csv_writer = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
@@ -1325,7 +1325,7 @@ class QuantSetupGUI:
 					print("src_transfer_vol = %s" % src_transfer_vol)
 
 				i_plt_idx 					= 1
-				while i_plt_idx <= self.data_summary['num_plates']:
+				while i_plt_idx <= self.data_summary['num_src_plts']:
 					s_plt_idx 				= str(i_plt_idx)
 
 					if(args.debug == True):
@@ -1366,10 +1366,10 @@ class QuantSetupGUI:
 					i_plt_idx 				+= 1
 
 		except IOError as e:
-			self.display_message(True, "ERROR: IOException writing Echo csv for the Standards intermediate plate to it's Black plate. Error Code: <%s> Message: <%s>" % (str(e.errno), e.strerror))
+			self.display_message(True, "ERROR: IOException writing Echo csv for the Standards intermediate plate to it's Black plate.\nError Code: <%s> Message: <%s>" % (str(e.errno), e.strerror))
 			return False
 		except Exception as ex:
-			self.display_message(True, "ERROR: Exception writing Echo csv for the Standards intermediate plate to it's Black plate. Error Message: <%s>" % str(ex))
+			self.display_message(True, "ERROR: Exception writing Echo csv for the Standards intermediate plate to it's Black plate.\nError Message: <%s>" % str(ex))
 			return False
 
 		return True
@@ -1381,90 +1381,154 @@ class QuantSetupGUI:
 			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# directories and filepaths
-		rundef_template_filepath 	= os.path.join(settings.get('Common').get('dir_rundef_templates'), settings.get('Quantification').get('quant_filename_setup_rundef_template'))
-		rundef_expt_filename 		= "dna_quantification_group_%s.rundef" % self.data_summary['lims_plate_group_id']
-		rundef_expt_filepath 		= os.path.join(self.expt_directory, rundef_expt_filename)
-		rundef_tempo_inbox_filepath = os.path.join(settings.get('Common').get('dir_tempo_inbox'), rundef_expt_filename)
+		try:
+			rundef_template_filepath 	= os.path.join(settings.get('Common').get('dir_rundef_templates'), settings.get('Quantification').get('quant_filename_setup_rundef_template'))
+			rundef_expt_filename 		= "dna_quantification_group_%s.rundef" % self.data_summary['lims_plate_group_id']
+			rundef_expt_filepath 		= os.path.join(self.expt_directory, rundef_expt_filename)
+			rundef_tempo_inbox_filepath = os.path.join(settings.get('Common').get('dir_tempo_inbox'), rundef_expt_filename)
 
-		if(args.debug == True):
-			print("rundef_template_filepath 	= %s" % rundef_template_filepath)
-			print("rundef_expt_filename     	= %s" % rundef_expt_filename)
-			print("rundef_expt_filepath     	= %s" % rundef_expt_filepath)
-			print("rundef_tempo_inbox_filepath 	= %s" % rundef_tempo_inbox_filepath)
+			if(args.debug == True):
+				print("rundef_template_filepath 	= %s" % rundef_template_filepath)
+				print("rundef_expt_filename     	= %s" % rundef_expt_filename)
+				print("rundef_expt_filepath     	= %s" % rundef_expt_filepath)
+				print("rundef_tempo_inbox_filepath 	= %s" % rundef_tempo_inbox_filepath)
 
-		# copy the template into the experiment directory
+			# create a dictionary of search_string : value
+			search_term_dict 	= self.generate_rundef_search_dictionary()
+			search_list 		= search_term_dict.keys()
 
-		# src and dst are filepaths
-		# copyfile(rundef_template_filepath, rundef_expt_filepath)
+			if(args.debug == True):
+				print("-" * 80)
+				print("Rundef search term dictionary:")
+				pprint(search_term_dict)
+				print("-" * 80)
+				print("Rundef search term list:")
+				pprint(search_list)
+				print("-" * 80)
 
-		# edit the copy, using regex to replace expressions
+		except Exception as e:
+			self.display_message(True, "ERROR: Exception creating the RunDef file when determining directory paths.\nError Message: <%s>" % str(e))
+			return False
 
-		# import fileinput
-		# import re
-		 
-		# for line in fileinput.input(inplace=1):
-		#     line = re.sub('foo','bar', line.rstrip())
-		#     print(line)
-
-		# set the working directory for a shortcut
-		# os.chdir('/home/jerel/Desktop')
-
-		# open the source file and read it into memory
-		# fh = file(rundef_template_filepath, 'r')
-		# subject = fh.read()
-		# fh.close()
-
-		# # create the pattern object. Note the "r". In case you're unfamiliar with Python
-		# # this is to set the string as raw so we don't have to escape our escape characters
-		# pattern = re.compile(r'%RUNSET_REFERENCE_ID%')
-		# # do the replace
-		# result = pattern.sub("('',", subject)
-
-		# # write the file
-		# f_out = file(rundef_expt_filepath, 'w')
-		# f_out.write(result)
-		# f_out.close()
-
-		search_strings = (r'%RUNSET_REFERENCE_ID%')
-
-		with open(rundef_expt_filepath, "wt") as fout:
-		    with open(rundef_template_filepath, "rt") as fin:
-		        for line in fin:		            
-					if any(s in line for s in strings):
-						fout.write(line.replace('txt_to_replace', 'new_txt'))
-					else:
-						fout.write(line)
+		# open the template rundef file, and the new output rubdef file, and copy lines across
+		# replacing any terms matching those in the search_term_dict
+		i_line_num = 1
+		try:
+			with codecs.open(rundef_expt_filepath, "wt", encoding='utf8') as file_out:
+				with codecs.open(rundef_template_filepath, "rt", encoding='utf8') as file_in:
+					# check each line in the template
+					for line in file_in:
+						# see if the line contains any of the search terms
+						for search_term in search_list:
+							# modify the line to replace the search term with the new lines generated in the dictionary
+							line = line.replace(search_term, search_term_dict[search_term])
+						# write the (potentially modified) line out to the new copy of the rundef file in the experiment directory
+						file_out.write(line)
+						i_line_num += 1
+		except Exception as e:
+			self.display_message(True, "ERROR: Exception creating the RunDef file at line <%s>.\nError Message: <%s>" % (str(i_line_num), str(e)))
+			return False
 
 
 		# create a new copy of the modified file and place it in the Tempo inbox directory
+		try:
+			shutil.copyfile(rundef_expt_filepath, rundef_tempo_inbox_filepath)
+		except Exception as e:
+			self.display_message(True, "ERROR: Exception copying the newly created RunDef file to the experiment directory.\nError Message: <%s>" % str(e))
+			return False
 
+		return True
 
+	def generate_rundef_search_dictionary(self):
+		'''Generate the dictionary of fields to be replaced in the quantification rundef file'''
 
-		# xml_string = read_xml_file()
-		# xmlstring = open('myxmldocument.xml', 'r').read()
+		if(args.debug == True):
+			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
 
-		# TODO: generate rundef file referencing csv files in expt dir
+		search_term_dict = {}
 
-		# %RUNSET_REFERENCE_ID%  -> reference the LIMS plate group id here? LIMS_PLATE_GROUP_ID
-		# %EXPT_ROOT_DIR%        -> to experiment directory e.g. C:\Users\ACCESS\Documents\ACCESS_DOCUMENTS\PIPELINE\dev\DNAQminimized 2PLATE\Temp
-		# %CHERRY_PICK_384PP_TO_384DEST_ECP_FP% -> ecp filepath -> C:\Users\ACCESS\Documents\ACCESS_DOCUMENTS\PIPELINE\dev\DNAQminimized\CherryPick 384PP to 384Dest.ecp
-		# %SOURCES_POOL_TO_STANDARDS_CSV_FP% -> 384 pooling to 1 on standards int file -> C:\Users\ACCESS\Documents\ACCESS_DOCUMENTS\PIPELINE\dev\DNAQminimized\template_384_to_1_no_barcodes_tvol.csv
+		# reference the LIMS plate group id
+		search_term_dict['SSS_RUNSET_REFERENCE_ID_SSS'] 					= self.data_summary['lims_plate_group_id']
 
-		# %POOLING_PLATEMAP_ROWS% -> source and destination plate rows
-		# <Plate EchoPlateID="1" PlateName="DNA_source_1" PlateType="384PP" Barcode="" LidType="" PlateCategory="Source" LocationURL="deck://Deck/1/5/" FinalLocation="deck://Deck/1/5/" PlateAccess="Sequential" PreRunActionSetName="Source" RunActionSetName="" PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNA_source_1" />
-		# <Plate EchoPlateID="3" PlateName="DNAQ_STD" PlateType="384PP_Dest" Barcode="" LidType="" PlateCategory="Destination" LocationURL="deck://Deck/1/1/" FinalLocation="deck://Deck/1/1/" PlateAccess="Sequential" PreRunActionSetName="DNAQ_STD" RunActionSetName="" PostRunActionSetName="DNAQ_STD" StorageDeviceSetName="" EchoTemplate="DNAQ_STD" />
-		# <Plate EchoPlateID="2" PlateName="DNA_source_2" PlateType="384PP" Barcode="" LidType="" PlateCategory="Source" LocationURL="deck://Deck/1/6/" FinalLocation="deck://Deck/1/6/" PlateAccess="Sequential" PreRunActionSetName="Source" RunActionSetName="" PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNA_source_2" />
+		# experiment directory root
+		search_term_dict['SSS_EXPT_ROOT_DIR_SSS'] 							= self.expt_directory
 
-		# %CHERRY_PICK_384PP_TO_CORNINGBLACK_ECP_FP% -> ecp filepath -> C:\Users\ACCESS\Documents\ACCESS_DOCUMENTS\PIPELINE\dev\DNAQminimized 2PLATE\CherryPick 384PP to CorningBlack.ecp
-		# %SOURCES_TO_CORNINGBLACK_CSV_FP% C:\Users\ACCESS\Documents\ACCESS_DOCUMENTS\PIPELINE\dev\DNAQminimized 2PLATE\template_2X384_to_2X384CorningPSBlack_no_barcodes_tvol.csv
+		# ecp filepath for 384dest type plates
+		search_term_dict['SSS_CHERRY_PICK_384DEST_ECP_FP_SSS'] 				= settings.get('Common').get('filepath_ecp_384dest')
+
+		# ecp filepath for corning black type plates
+		search_term_dict['SSS_CHERRY_PICK_CORNINGBLACK_ECP_FP_SSS'] 		= settings.get('Common').get('filepath_ecp_384corningblack')
+
+		# csv filepath for sources being pooled into the standards plate
+		search_term_dict['SSS_SOURCES_POOL_TO_STANDARDS_CSV_FP_SSS'] 		= os.path.join(self.expt_directory, settings.get('Quantification').get('quant_filename_sources_to_standards_csv'))
+
+		# csv filepath for sources to corning black plates
+		search_term_dict['SSS_SOURCES_TO_CORNINGBLACK_CSV_FP_SSS'] 			= os.path.join(self.expt_directory, settings.get('Quantification').get('quant_filename_sources_to_black_plts_csv'))
+
+		# csv filepath for standards plate to corning black plate
+		search_term_dict['SSS_STANDARDS_TO_CORNINGBLACK_CSV_FP_SSS'] 		= os.path.join(self.expt_directory, settings.get('Quantification').get('quant_filename_standards_to_black_csv'))
+
+		i_srcs_init_stk_posn 				= settings.get('Common').get('src_plts_initial_stk_posn') # from main config
+		s_stnd_plt_stk_posn 				= "1" # TODO: get this from standards config
 		
-		# %SOURCES_PLATEMAP_ROWS% -> source and destination plate rows
-		# <Plate EchoPlateID="1" PlateName="DNA_source_1" PlateType="384PP" Barcode="" LidType="" PlateCategory="Source" LocationURL="deck://Deck/1/5/" FinalLocation="deck://Deck/1/5/" PlateAccess="Sequential" PreRunActionSetName="" RunActionSetName="" PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNA_source_1" />
-  		# <Plate EchoPlateID="3" PlateName="DNAQ_Black_1" PlateType="Corning_384PS_Black" Barcode="" LidType="" PlateCategory="Destination" LocationURL="deck://Deck/4/*/" FinalLocation="deck://Deck/3/*/" PlateAccess="Sequential" PreRunActionSetName="" RunActionSetName="" PostRunActionSetName="Destination" StorageDeviceSetName="" EchoTemplate="DNAQ_Black_1" />
-  		# <Plate EchoPlateID="2" PlateName="DNA_source_2" PlateType="384PP" Barcode="" LidType="" PlateCategory="Source" LocationURL="deck://Deck/1/6/" FinalLocation="deck://Deck/1/6/" PlateAccess="Sequential" PreRunActionSetName="" RunActionSetName="" PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNA_source_2" />
-  		# <Plate EchoPlateID="4" PlateName="DNAQ_Black_2" PlateType="Corning_384PS_Black" Barcode="" LidType="" PlateCategory="Destination" LocationURL="deck://Deck/4/*/" FinalLocation="deck://Deck/3/*/" PlateAccess="Sequential" PreRunActionSetName="" RunActionSetName="" PostRunActionSetName="Destination" StorageDeviceSetName="" EchoTemplate="DNAQ_Black_2" />
+		# create the source and destination plate rows for the sources pooling to the standards plate transfers
+		# add the first source (DNA source) plate row
+		s_src_stk_posn 						= str(i_srcs_init_stk_posn)
+		s_pooling_platemap_rows 			= 	(u'\t\t\t\t<Plate EchoPlateID="1" PlateName="DNAQ_source_1" PlateType="384PP" Barcode="%s" LidType="" PlateCategory="Source" '
+												'LocationURL="deck://Deck/1/%s/" FinalLocation="deck://Deck/1/%s/" PlateAccess="Sequential" PreRunActionSetName="Source" RunActionSetName="" '
+												'PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNAQ_source_1" />\n' 
+												% (self.data_summary['plates']['1']['barcode'], s_src_stk_posn, s_src_stk_posn))
+		
+		# next append the destination (Standards) plate row which is in a fixed position (will then stay in the Echo destination drawer while the transfers run)
+		s_stnd_plt_id_num 					= str(self.data_summary['num_src_plts'] + 1) # standards destination set to 1 more than total source plates
+		s_pooling_platemap_rows 			+= 	(u'\t\t\t\t<Plate EchoPlateID="%s" PlateName="DNAQ_STD" PlateType="384PP_Dest" Barcode="" LidType="" PlateCategory="Destination" '
+												'LocationURL="deck://Deck/1/%s/" FinalLocation="deck://Deck/1/%s/" PlateAccess="Sequential" PreRunActionSetName="DNAQ_STD" RunActionSetName="" '
+												'PostRunActionSetName="DNAQ_STD" StorageDeviceSetName="" EchoTemplate="DNAQ_STD" />\n' 
+												% (s_stnd_plt_id_num, s_stnd_plt_stk_posn, s_stnd_plt_stk_posn))
 
-  		# What does the DataFileName here do?!:
+		# append the remaining source (DNA source) plate rows
+		i_src_stk_posn 						= i_srcs_init_stk_posn
+		i_src_idx      						= 2 # start at second plate
+
+		while i_src_idx <= self.data_summary['num_src_plts']:
+			s_src_idx 						= str(i_src_idx)
+			s_src_stk_posn 					= str(i_src_stk_posn)
+			s_pooling_platemap_rows 		+= 	(u'\t\t\t\t<Plate EchoPlateID="%s" PlateName="DNAQ_source_%s" PlateType="384PP" Barcode="%s" LidType="" PlateCategory="Source" '
+												'LocationURL="deck://Deck/1/%s/" FinalLocation="deck://Deck/1/%s/" PlateAccess="Sequential" PreRunActionSetName="Source" RunActionSetName="" '
+												'PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNAQ_source_%s" />\n' 
+												% (s_src_idx, s_src_idx, self.data_summary['plates'][s_src_idx]['barcode'], s_src_stk_posn, s_src_stk_posn, s_src_idx))
+			i_src_stk_posn 					+= 1 # increment stack position
+			i_src_idx 						+= 1 # increment source plate index
+
+		search_term_dict['SSS_POOLING_PLATEMAP_ROWS_SSS'] 					= s_pooling_platemap_rows.encode('utf-8')
+
+		# create the source and destination rows for the sources to black plates transfers
+		# for each source add a destination row
+		s_src_to_blks_rows 					= ""
+		i_src_stk_posn 						= i_srcs_init_stk_posn
+		i_src_idx      						= 1
+		
+		while i_src_idx <= self.data_summary['num_src_plts']:
+			# add a source plate row
+			s_src_idx 						= str(i_src_idx)
+			s_src_stk_posn 					= str(i_src_stk_posn)
+			s_src_to_blks_rows 				+= 	(u'\t\t\t\t<Plate EchoPlateID="%s" PlateName="DNAQ_source_%s" PlateType="384PP" Barcode="%s" LidType="" PlateCategory="Source" '
+												'LocationURL="deck://Deck/1/%s/" FinalLocation="deck://Deck/1/%s/" PlateAccess="Sequential" PreRunActionSetName="" RunActionSetName="" '
+												'PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNAQ_source_%s" />\n' 
+												% (s_src_idx, s_src_idx, self.data_summary['plates'][s_src_idx]['barcode'], s_src_stk_posn, s_src_stk_posn, s_src_idx))
+			s_black_plate_id_num 			= str(self.data_summary['num_src_plts'] + i_src_idx)
+
+			# add a corresponding destination plate row (these plates come from stack 4 and end up in stack 3)
+			s_src_to_blks_rows 				+= 	(u'\t\t\t\t<Plate EchoPlateID="%s" PlateName="DNAQ_Black_%s" PlateType="Corning_384PS_Black" Barcode="" LidType="" PlateCategory="Destination" '
+												'LocationURL="deck://Deck/4/*/" FinalLocation="deck://Deck/3/*/" PlateAccess="Sequential" PreRunActionSetName="" RunActionSetName="" '
+												'PostRunActionSetName="Destination" StorageDeviceSetName="" EchoTemplate="DNAQ_Black_%s" />\n' 
+												% (s_black_plate_id_num, s_src_idx, s_src_idx))
+			i_src_stk_posn 					+= 1 # increment stack position
+			i_src_idx 						+= 1 # increment source plate index
+
+		search_term_dict['SSS_SOURCES_PLATEMAP_ROWS_SSS'] 					= s_src_to_blks_rows.encode('utf-8')
+
+  		# TODO: What does the DataFileName here do?! Can we set this to fix the BMG read filepath?:
 		# <PHERAstar_Read_Plate>
 		# <ReadPlateParameters>Labcyte.POD.Devices.Pherastar.ReadPlateParameters</ReadPlateParameters>
 		# <ProtocolName>AccuClear UHS</ProtocolName>
@@ -1475,17 +1539,21 @@ class QuantSetupGUI:
 		# <DeviceName>FLUOstar</DeviceName>
 		# </PHERAstar_Read_Plate>
 
-		# %CHERRY_PICK_384PP_TO_CORNINGBLACK_ECP_FP% -> ecp -> C:\Users\ACCESS\Documents\ACCESS_DOCUMENTS\PIPELINE\dev\DNAQminimized\CherryPick 384PP to CorningBlack.ecp
+		# create the source and destination rows for the standards plate to its black plate transfer
+		# add the standards source plate row (location is fixed)
+		s_stnd_to_blk_rows 					= 	(u'\t\t\t\t<Plate EchoPlateID="1" PlateName="DNAQ_STD" PlateType="384PP" Barcode="" LidType="" PlateCategory="Source" '
+												'LocationURL="deck://Deck/1/%s/" FinalLocation="deck://Deck/1/%s/" PlateAccess="Sequential" PreRunActionSetName="Source" RunActionSetName="" '
+												'PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNAQ_STD" />\n' 
+												% (s_stnd_plt_stk_posn, s_stnd_plt_stk_posn))
 
-		# %STANDARDS_TO_CORNINGBLACK_CSV_FP% -> Standards plate to corning black -> C:\Users\ACCESS\Documents\ACCESS_DOCUMENTS\PIPELINE\dev\DNAQminimized\template_384Standard_to_384CorningPSBlack_no_barcodes_tvol.csv
+		# append the destination black plate row (these plates come from stack 4 and end up in stack 3)
+		s_stnd_to_blk_rows 					+= 	(u'\t\t\t\t<Plate EchoPlateID="2" PlateName="DNAQ_Black" PlateType="Corning_384PS_Black" Barcode="" LidType="" PlateCategory="Destination" '
+												'LocationURL="deck://Deck/4/*/" FinalLocation="deck://Deck/3/*/" PlateAccess="Sequential" PreRunActionSetName="" RunActionSetName="" '
+												'PostRunActionSetName="DNAQ_Black" StorageDeviceSetName="" EchoTemplate="DNAQ_Black" />\n')
 
-		# %STANDARDS_PLATEMAP_ROWS% -> source and destination plate rows
-		# <Plate EchoPlateID="1" PlateName="DNAQ_STD" PlateType="384PP" Barcode="" LidType="" PlateCategory="Source" LocationURL="deck://Deck/1/1/" FinalLocation="deck://Deck/1/1/" PlateAccess="Sequential" PreRunActionSetName="Source" RunActionSetName="" PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNAQ_STD" />
-  		# <Plate EchoPlateID="2" PlateName="DNAQ_Black" PlateType="Corning_384PS_Black" Barcode="" LidType="" PlateCategory="Destination" LocationURL="deck://Deck/4/*/" FinalLocation="deck://Deck/3/*/" PlateAccess="Sequential" PreRunActionSetName="" RunActionSetName="" PostRunActionSetName="DNAQ_Black" StorageDeviceSetName="" EchoTemplate="DNAQ_Black" />
+		search_term_dict['SSS_STANDARDS_PLATEMAP_ROWS_SSS'] 				= s_stnd_to_blk_rows.encode('utf-8')
 
-
-
-		return
+		return search_term_dict
 
 # -----------------------------------------------------------------------------
 # Utility Methods
@@ -1528,49 +1596,6 @@ def regex_replace_field_in_xml(xml_string, re_string, replacement_string):
 	# return modified XML string
 	return xml_string_modified
 	
-
-# def calculate_standards_pooling_well_position(initial_pool_posn, pool_index):
-# 	'''Given the initial pool well position and the pool index, work out where the pool well position should be
-
-# 	Args:
-# 		initial_pool_posn - the first pool position from the standards config file
-# 		pool_index 	      - the current pooling index which depends on number of pools to make
-
-# 	Assumption is that any additional pools are to the right of the initial pool.
-# 	'''
-
-# 	if(args.debug == True):
-# 		print("In %s" % inspect.currentframe().f_code.co_name)
-
-# 	# split initial position into row character and column number using a regex
-# 	match = re.match(r"([A-Z]+)([0-9]+)", initial_pool_posn, re.I)
-# 	if match:
-# 		items = match.groups() # e.g. items is ("A", "10")
-# 	else:
-# 		return None
-
-# 	s_row 			= items[0]
-# 	i_initial_col 	= int(items[1])
-
-# 	# add pool_index - 1 to the column number
-# 	new_col_num 	= i_initial_col + (pool_index - 1)
-
-# 	# check new column number not greater than 24 (assuming 384-well plate)
-# 	if(new_col_num > 24):
-# 		# error, extended beyond plate boundary
-# 		if(args.debug == True):
-# 			print("New column <%s> is greater than 24, cannot continue." % str(new_col_num))
-
-# 		return None
-
-# 	# concat row character to new column position and return
-# 	new_posn = s_row + str(new_col_num)
-
-# 	if(args.debug == True):
-# 		print("New pooling well position is %s" % new_posn)
-
-# 	return new_posn
-
 # -----------------------------------------------------------------------------
 # Common GUI Elements
 # -----------------------------------------------------------------------------
@@ -1760,12 +1785,11 @@ def display_gui_quantsetup():
 
 	if(args.debug == True):
 		print("In %s" % inspect.currentframe().f_code.co_name)
-		print pprint(settings)
 
-	root 	= Tk()
+	root 		= Tk()
 	root.geometry('%dx%d+%d+%d' % (settings.get('Common').get('gui_width'), settings.get('Common').get('gui_height'), settings.get('Common').get('gui_x_posn'), settings.get('Common').get('gui_y_posn')))
 	root.title("Access System Script")
-	app 	= QuantSetupGUI(root)
+	app 		= QuantSetupGUI(root)
 
 	root.mainloop()
 
