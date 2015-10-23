@@ -68,7 +68,7 @@ TODO:
   this should log key information only, e.g. user choices, refs to files and where. 
   they have been written. Timestamp per entry row.
 
-* 
+* can we replace the text file message in "Your plates are quantified.txt" with something else?
 
 
 '''
@@ -193,6 +193,7 @@ def parse_access_system_config_file():
 				'quant_filename_sources_to_standards_csv':'str',
 				'quant_filename_sources_to_black_plts_csv':'str',
 				'quant_filename_standards_to_black_csv':'str',
+				'quant_filename_setup_log':'str',
 				'quant_cdna_min_conc':'flt',
 				'quant_cdna_max_conc':'flt',
 				'quant_cdna_min_percent_wells_ok':'flt',
@@ -677,9 +678,7 @@ class QuantSetupGUI:
 				print("Failed to generate RunDef file")
 			return
 
-  		# TODO: can we replace the text file message in "Your plates are quantified.txt" with something else?
-
-		# create a new copy of the LIMS file and place it in the experiment directory
+  		# create a new copy of the LIMS file and place it in the experiment directory
 		try:
 			lims_src_plt_grp_filename 	= os.path.basename(self.lims_src_plt_grp_filepath)
 			new_expt_filepath 			= os.path.join(self.expt_directory, lims_src_plt_grp_filename)
@@ -1469,7 +1468,8 @@ class QuantSetupGUI:
 		search_term_dict['SSS_STANDARDS_TO_CORNINGBLACK_CSV_FP_SSS'] 		= os.path.join(self.expt_directory, settings.get('Quantification').get('quant_filename_standards_to_black_csv'))
 
 		i_srcs_init_stk_posn 				= settings.get('Common').get('src_plts_initial_stk_posn') # from main config
-		s_stnd_plt_stk_posn 				= "1" # TODO: get this from standards config
+		stnd_type 							= self.data_summary['standards_type']
+		s_stnd_plt_stk_posn 				= quant_standards[stnd_type]['Information']['stnd_plt_stk_posn'] # from standards config
 		
 		# create the source and destination plate rows for the sources pooling to the standards plate transfers
 		# add the first source (DNA source) plate row
@@ -1573,7 +1573,6 @@ def check_and_create_directory(directory):
 
 	return
 
-
 def regex_replace_field_in_xml(xml_string, re_string, replacement_string):
 	'''Use a Regular Expression to replace one value in an XML string with another'''
 
@@ -1595,7 +1594,14 @@ def regex_replace_field_in_xml(xml_string, re_string, replacement_string):
 
 	# return modified XML string
 	return xml_string_modified
+
+def append_to_log(log_filepath, message):
+	'''Append a message line to a specified log file'''
 	
+	# quant_filename_setup_log
+
+	return
+
 # -----------------------------------------------------------------------------
 # Common GUI Elements
 # -----------------------------------------------------------------------------
