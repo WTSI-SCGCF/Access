@@ -104,17 +104,22 @@ settings 					= {} # stores parsed configuration settings
 valid_quant_standards  		= ['SS2'] # list of the valid standards types
 quant_standards				= {} # stores parsed quantification standards
 
-# GUI 
-bg_colour 					= 'white'
-fg_colour 					= 'black'
-entry_field_colour  		= 'yellow'
-title_colour  				= 'blue'
-fg_ok_colour 				= '#32701e' # green
-fg_error_colour 			= 'red'
+# GUI colours and fonts
+colour_white 				= 'white'
+colour_black 				= 'black'
+colour_yellow 	 			= 'yellow'
+colour_blue  				= 'blue'
+colour_green 				= '#32701e'
+colour_red 					= 'red'
+colour_lt_green 			= '#18631e'
+colour_light_grey 			= '#e5e5e5'
 
-font_arial_normal 			= 'Arial 16'
-font_courier_normal			= 'Courier 12'
-font_arial_large_bold 		= 'Arial 24 bold'
+font_arial_normal 			= 'Arial -16'
+font_courier_normal			= 'Courier -12'
+font_arial_huge_bold 		= 'Arial -24 bold'
+font_arial_large_bold 		= 'Arial -18 bold'
+font_arial_medium_bold 		= 'Arial -16 bold'
+font_verdana_normal_italic 	= 'Verdana -12 italic'
 
 # -----------------------------------------------------------------------------
 # Initialisation Methods
@@ -426,8 +431,8 @@ class QuantSetupGUI:
 		s_script_info = "Single Cell Genomics Core Facility\nScript Version: %s" % script_version
 		frame.grid_rowconfigure(0, weight=1)
 		lbl_scgcf_params 		= {'widg_text':s_script_info, 
-									'widg_fg':'#18631e',
-									'widg_font':'Verdana 12 italic',
+									'widg_fg':colour_lt_green,
+									'widg_font':font_verdana_normal_italic,
 									'grid_row':0,
 									'grid_col':0,
 									'grid_cols':2,
@@ -448,8 +453,8 @@ class QuantSetupGUI:
 		# ---------------------------------------------------------------------
 		frame.grid_rowconfigure(1, weight=1)
 		lbl_title_params 		= {'widg_text':"Quantification Setup", 
-									'widg_fg':title_colour,
-									'widg_font':font_arial_large_bold,
+									'widg_fg':colour_blue,
+									'widg_font':font_arial_huge_bold,
 									'widg_justify':CENTER,
 									'widg_anchor':CENTER,
 									'grid_row':1,
@@ -479,7 +484,7 @@ class QuantSetupGUI:
 		# Row 3 - LIMS filepath and button
 		# ---------------------------------------------------------------------
 		frame.grid_rowconfigure(3, weight=1)
-		lbl_lims_fp_params 		= {'widg_bg':'yellow',
+		lbl_lims_fp_params 		= {'widg_bg':colour_yellow,
 									'widg_font':font_courier_normal,
 									'widg_width':90,
 									'grid_row':3,
@@ -716,8 +721,8 @@ class QuantSetupGUI:
 		self.txt_msg_panel.delete('1.0', END)
 
 		# set up tags
-		self.txt_msg_panel.tag_configure('msg_error', 	 font=font_arial_normal, foreground=fg_error_colour)
-		self.txt_msg_panel.tag_configure('msg_standard', font=font_arial_normal, foreground=fg_ok_colour)
+		self.txt_msg_panel.tag_configure('msg_error', 	 font=font_arial_normal, foreground=colour_red)
+		self.txt_msg_panel.tag_configure('msg_standard', font=font_arial_normal, foreground=colour_green)
 
 		# display message
 		if(is_error):
@@ -866,9 +871,9 @@ class QuantSetupGUI:
 			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# define tags for formatting text
-		self.txt_summary.tag_configure('tag_title', font='arial 18 bold', foreground=fg_ok_colour, relief='raised',justify='center', underline='True')
-		self.txt_summary.tag_configure('tag_hl', font='arial 16 bold', foreground=fg_ok_colour)
-		self.txt_summary.tag_configure('tag_bg_grey', background='#e5e5e5') # grey background
+		self.txt_summary.tag_configure('tag_title', font=font_arial_large_bold, foreground=colour_green, relief='raised',justify='center', underline='True')
+		self.txt_summary.tag_configure('tag_hl', font=font_arial_medium_bold, foreground=colour_green)
+		self.txt_summary.tag_configure('tag_bg_grey', background=colour_light_grey)
 
 		# insert text for summary
 		self.txt_summary.insert('1.0', "Summary of File\n", ('tag_title'))
@@ -1669,11 +1674,11 @@ def setup_styles_and_themes():
 								settings 	= {'TCombobox':
 				                                {'configure':
 				                                    {	'font':font_arial_normal,
-				                                    	'foreground':fg_colour,
-				                                     	'selectforeground': fg_colour,
-				                                     	'fieldbackground': bg_colour,
-				                                     	'background': bg_colour,
-				                                     	'selectbackground': bg_colour
+				                                    	'foreground':colour_black,
+				                                     	'selectforeground': colour_black,
+				                                     	'fieldbackground': colour_white,
+				                                     	'background': colour_white,
+				                                     	'selectbackground': colour_white
 				                                  	}
 				                                }
 				                            }
@@ -1697,8 +1702,8 @@ def create_widget_button(widg_frame, widg_params):
 				text 		= widg_params.get('widg_text', ""),
 				textvariable= widg_params.get('widg_txt_var', None),
 				width   	= widg_params.get('widg_width', 16),
-				bg 			= widg_params.get('widg_bg', bg_colour),
-				fg 			= widg_params.get('widg_fg', fg_colour),
+				bg 			= widg_params.get('widg_bg', colour_white),
+				fg 			= widg_params.get('widg_fg', colour_black),
 				font 		= widg_params.get('widg_font', font_arial_normal),
 				image   	= widg_params.get('widg_image', None),
 				justify 	= widg_params.get('widg_justify', CENTER),
@@ -1759,8 +1764,8 @@ def create_widget_label(widg_frame, widg_params):
 				text 		= widg_params.get('widg_text', ""),
 				textvariable= widg_params.get('widg_txt_var', None),
 				width  		= widg_params.get('widg_width', None),
-				bg 			= widg_params.get('widg_bg', bg_colour),
-				fg 			= widg_params.get('widg_fg', fg_colour),
+				bg 			= widg_params.get('widg_bg', colour_white),
+				fg 			= widg_params.get('widg_fg', colour_black),
 				font 		= widg_params.get('widg_font', font_arial_normal),
 				image   	= widg_params.get('widg_image', None),
 				justify 	= widg_params.get('widg_justify', LEFT),
@@ -1789,8 +1794,8 @@ def create_widget_text(widg_frame, widg_params):
 	text 	    			= Text(widg_frame,
 				wrap 		= widg_params.get("widg_wrap", WORD),
 				height   	= widg_params.get('widg_height', 1),
-				bg 			= widg_params.get('widg_bg', bg_colour),
-				fg 			= widg_params.get('widg_fg', fg_colour),
+				bg 			= widg_params.get('widg_bg', colour_white),
+				fg 			= widg_params.get('widg_fg', colour_black),
 				font 		= widg_params.get('widg_font', font_arial_normal))
 
 	# write the text into the widget
