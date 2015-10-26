@@ -83,7 +83,7 @@ import re 			# for regex expressions
 import shutil 		# for file copying
 import codecs 		# for reading utf-8 files
 
-from configobj 		import ConfigObj 		# for reading config files
+from configobj 		import ConfigObj, ConfigObjError # for reading config files
 from Tkinter        import * 				# for the GUI interfaces
 import ttk 									# for the GUI interface widgets
 from tkMessageBox 	import askyesno 		# for pop-up message boxes
@@ -97,7 +97,7 @@ from pprint import pprint # for pretty printing e.g. lists and dictionaries
 # -----------------------------------------------------------------------------
 script_version 				= "1.0"
 
-config_filename 			= 'config/access_system.cfg' # configuration filename
+config_filepath 			= 'config/access_system.cfg' # configuration filename
 valid_modes     			= ['quantsetup'] # valid program modes
 args     					= {} # stores parsed command line arguments
 settings 					= {} # stores parsed configuration settings
@@ -133,14 +133,14 @@ def parse_command_line_arguments():
 	args = parser.parse_args()
 	
 	if(args.debug == True):
-		print("DEBUG mode is active")		
+		print_debug_message("DEBUG mode is active")		
 		if(args.verbose == True):
-			print("Verbose mode is active")
+			print_debug_message("Verbose mode is active")
 
 	# check if mode is valid
 	if args.mode in valid_modes:
 		if(args.debug == True):
-			print("Mode is valid: " + args.mode)
+			print_debug_message("Mode is valid: " + args.mode)
 	else:
 		sys.exit("Access System Script: ERROR: Chosen mode is not recognised <" + str(args.mode)+ ">, cannot continue")
 
@@ -166,10 +166,10 @@ def parse_access_system_config_file():
 	'''
 
 	if(args.debug == True):
-		print("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
 
 	# Read the configuration file
-	config = ConfigObj(config_filename)
+	config = read_configuration_file(config_filepath)
 
 	# Verify that the options imported from the file match with an expected list maintained here
 	options_list = {
@@ -205,35 +205,39 @@ def parse_access_system_config_file():
 
 	global settings
 
-	# copy the options into the global settings list so that they are available throughout the program
-	for opt_group, opt_dict in options_list.iteritems():
-		settings[opt_group] = {}
-		for opt, opt_type in opt_dict.iteritems():
-			if(config.has_key(opt_group)):
-				pprint(config[opt_group].keys())
-				if(config[opt_group].has_key(opt)):
-					if(opt_type == 'str'):
-						settings[opt_group][opt] = str(config[opt_group][opt])
-					elif(opt_type == 'int'):
-						settings[opt_group][opt] = int(config[opt_group][opt])
-					elif(opt_type == 'flt'):
-						settings[opt_group][opt] = float(config[opt_group][opt])
-					elif(opt_type == 'bool'):
-						settings[opt_group][opt] = bool(config[opt_group][opt])
+	# Copy the options into the global settings list so that they are available throughout the program
+	try:
+		for opt_group, opt_dict in options_list.iteritems():
+			settings[opt_group] = {}
+			for opt, opt_type in opt_dict.iteritems():
+				if(config.has_key(opt_group)):
+					if(config[opt_group].has_key(opt)):
+						if(opt_type == 'str'):
+							settings[opt_group][opt] = str(config[opt_group][opt])
+						elif(opt_type == 'int'):
+							settings[opt_group][opt] = int(config[opt_group][opt])
+						elif(opt_type == 'flt'):
+							settings[opt_group][opt] = float(config[opt_group][opt])
+						elif(opt_type == 'bool'):
+							settings[opt_group][opt] = bool(config[opt_group][opt])
+						else:
+							sys.exit("Access System Script: ERROR: Configuration file field type not understood for option group <%s> and option <%s>, cannot continue" % (str(opt_group), str(opt)))
 					else:
-						sys.exit("Access System Script: ERROR: Configuration file field type not understood for option group <" + str(opt_group)+ "> and option <" + str(opt) + ">, cannot continue")
+						sys.exit("Access System Script: ERROR: Configuration file format option group <%s> is missing option <%s>, cannot continue" % (str(opt_group), str(opt)))
 				else:
-					sys.exit("Access System Script: ERROR: Configuration file format option group <" + str(opt_group)+ "> is missing option <" + str(opt) + ">, cannot continue")
-			else:
-				sys.exit("Access System Script: ERROR: Configuration file format missing option group <" + str(opt_group)+ ">, cannot continue")
+					sys.exit("Access System Script: ERROR: Configuration file format missing option group <%s>, cannot continue" % str(opt_group))
+	except ValueError as ve:
+		sys.exit("Access System Script: ValueError parsing config file into settings from filepath <%s>. Cannot continue. Message: %s" % (config_filepath, ve.message))
+	except Exception as e:
+		sys.exit("Access System Script: Exception parsing config file into settings from filepath <%s>. Cannot continue. Message: %s" % (config_filepath, e.message))
 
-	# print out settings if in debug mode
+	# Print out settings if in debug mode
 	if(args.debug == True):
-		print('-' * 80)
-		print("Settings from config file are as follows:")
-		print('-' * 80)
+		print_debug_message('-' * 80)
+		print_debug_message("Settings from config file are as follows:")
+		print_debug_message('-' * 80)
 		pprint(settings)
-		print('-' * 80)
+		print_debug_message('-' * 80)
 
 	return
 
@@ -247,8 +251,8 @@ def parse_quantification_standards_config_file(stnd_type):
 	'''
 
 	if(args.debug == True):
-		print("In %s" % inspect.currentframe().f_code.co_name)
-		print("Input standards type: %s" % stnd_type)
+		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message("Input standards type: %s" % stnd_type)
 
 	# Read the relevant configuration file
 	standards_config_filename = ""
@@ -256,14 +260,14 @@ def parse_quantification_standards_config_file(stnd_type):
 		standards_config_filename = settings.get('Quantification').get('quant_filename_standards_ss2')
 
 	if(args.debug == True):
-		print("Standards config filename : %s" % standards_config_filename)	
+		print_debug_message("Standards config filename : %s" % standards_config_filename)	
 
 	standards_config_filepath = os.path.join(settings.get('Quantification').get('quant_dir_standards'), standards_config_filename)
 
 	if(args.debug == True):
-		print("Standards config filepath : %s" % standards_config_filepath)
+		print_debug_message("Standards config filepath : %s" % standards_config_filepath)
 
-	config = ConfigObj(standards_config_filepath)
+	config = read_configuration_file(standards_config_filepath)
 
 	# Verify that the options imported from the file match with an expected list maintained here
 	options_list = {
@@ -286,64 +290,67 @@ def parse_quantification_standards_config_file(stnd_type):
 	quant_standards[stnd_type] = {}
 
 	# copy the standards into the global standards list so that they are available throughout the program
-	for opt_group, opt_dict in options_list.iteritems():
-		quant_standards[stnd_type][opt_group] = {}
-		for opt, opt_type in opt_dict.iteritems():
-			if(config.has_key(opt_group)):
-				if(config[opt_group].has_key(opt)):
-					if(opt_type == 'str'):
-						quant_standards[stnd_type][opt_group][opt] = str(config[opt_group][opt])
-					elif(opt_type == 'int'):
-						quant_standards[stnd_type][opt_group][opt] = int(config[opt_group][opt])
-					elif(opt_type == 'flt'):
-						quant_standards[stnd_type][opt_group][opt] = float(config[opt_group][opt])
-					elif(opt_type == 'bool'):
-						quant_standards[stnd_type][opt_group][opt] = bool(config[opt_group][opt])
-						print(".")
+	try:
+		for opt_group, opt_dict in options_list.iteritems():
+			quant_standards[stnd_type][opt_group] = {}
+			for opt, opt_type in opt_dict.iteritems():
+				if(config.has_key(opt_group)):
+					if(config[opt_group].has_key(opt)):
+						if(opt_type == 'str'):
+							quant_standards[stnd_type][opt_group][opt] = str(config[opt_group][opt])
+						elif(opt_type == 'int'):
+							quant_standards[stnd_type][opt_group][opt] = int(config[opt_group][opt])
+						elif(opt_type == 'flt'):
+							quant_standards[stnd_type][opt_group][opt] = float(config[opt_group][opt])
+						elif(opt_type == 'bool'):
+							quant_standards[stnd_type][opt_group][opt] = bool(config[opt_group][opt])
+						else:
+							sys.exit("Access System Script: ERROR: Standards file field type not understood for option group <%s> and option <%s>, cannot continue" % (str(opt_group), str(opt)))
 					else:
-						sys.exit("Access System Script: ERROR: Standards file field type not understood for option group <" + str(opt_group)+ "> and option <" + str(opt) + ">, cannot continue")
+						sys.exit("Access System Script: ERROR: Standards file format option group <%s> is missing option <%s>, cannot continue" % (str(opt_group), str(opt)))
 				else:
-					sys.exit("Access System Script: ERROR: Standards file format option group <" + str(opt_group)+ "> is missing option <" + str(opt) + ">, cannot continue")
-			else:
-				sys.exit("Access System Script: ERROR: Standards file format missing option group <" + str(opt_group)+ ">, cannot continue")
+					sys.exit("Access System Script: ERROR: Standards file format missing option group <%s>, cannot continue" % str(opt_group))
 
-	# retrieve sub-section information for the ladder
-	lad_idx 			= 1
-	num_ladder_wells 	= int(quant_standards[stnd_type]['Ladder']['num_of_ladder_wells'])
+		# retrieve sub-section information for the ladder
+		lad_idx 			= 1
+		num_ladder_wells 	= int(quant_standards[stnd_type]['Ladder']['num_of_ladder_wells'])
 
-	quant_standards[stnd_type]['Ladder']['wells'] = {}
+		quant_standards[stnd_type]['Ladder']['wells'] = {}
 
-	while lad_idx <= num_ladder_wells:
-		s_lad_idx 		= str(lad_idx)
-		quant_standards[stnd_type]['Ladder']['wells'][s_lad_idx] 							= {}
-		quant_standards[stnd_type]['Ladder']['wells'][s_lad_idx]['well_posn'] 				= str(config['Ladder'][s_lad_idx]['well_posn'])
-		quant_standards[stnd_type]['Ladder']['wells'][s_lad_idx]['concentration_ng_ul']		= float(config['Ladder'][s_lad_idx]['concentration_ng_ul'])
-		quant_standards[stnd_type]['Ladder']['wells'][s_lad_idx]['vol_to_dispense_nl'] 		= float(config['Ladder'][s_lad_idx]['vol_to_dispense_nl'])
-		quant_standards[stnd_type]['Ladder']['wells'][s_lad_idx]['black_plt_well_locns'] 	= config['Ladder'][s_lad_idx]['black_plt_well_locns'] # creates list of well posn strings
-		lad_idx 		+= 1
+		while lad_idx <= num_ladder_wells:
+			s_lad_idx 		= str(lad_idx)
+			quant_standards[stnd_type]['Ladder']['wells'][s_lad_idx] 							= {}
+			quant_standards[stnd_type]['Ladder']['wells'][s_lad_idx]['well_posn'] 				= str(config['Ladder'][s_lad_idx]['well_posn'])
+			quant_standards[stnd_type]['Ladder']['wells'][s_lad_idx]['concentration_ng_ul']		= float(config['Ladder'][s_lad_idx]['concentration_ng_ul'])
+			quant_standards[stnd_type]['Ladder']['wells'][s_lad_idx]['vol_to_dispense_nl'] 		= float(config['Ladder'][s_lad_idx]['vol_to_dispense_nl'])
+			quant_standards[stnd_type]['Ladder']['wells'][s_lad_idx]['black_plt_well_locns'] 	= config['Ladder'][s_lad_idx]['black_plt_well_locns'] # creates list of well posn strings
+			lad_idx 		+= 1
 
-	# retrieve sub-section information for the pools
-	src_idx 			= 1
-	max_num_sources 	= int(quant_standards[stnd_type]['Pools']['max_num_sources'])
+		# retrieve sub-section information for the pools
+		src_idx 			= 1
+		max_num_sources 	= int(quant_standards[stnd_type]['Pools']['max_num_sources'])
 
-	quant_standards[stnd_type]['Pools']['sources'] = {}
+		quant_standards[stnd_type]['Pools']['sources'] = {}
 
-	while src_idx <= max_num_sources:
-		s_src_idx 		= str(src_idx)
-		print("index : %s" % s_src_idx)
-		pprint(config['Pools'][s_src_idx])
-		quant_standards[stnd_type]['Pools']['sources'][s_src_idx] 							= {}
-		quant_standards[stnd_type]['Pools']['sources'][s_src_idx]['standards_plt_pool_locn']= str(config['Pools'][s_src_idx]['standards_plt_pool_locn'])
-		quant_standards[stnd_type]['Pools']['sources'][s_src_idx]['black_plt_well_locns'] 	= config['Pools'][s_src_idx]['black_plt_well_locns'] # creates list of well posn strings
-		src_idx 		+= 1
+		while src_idx <= max_num_sources:
+			s_src_idx 		= str(src_idx)
+			quant_standards[stnd_type]['Pools']['sources'][s_src_idx] 							= {}
+			quant_standards[stnd_type]['Pools']['sources'][s_src_idx]['standards_plt_pool_locn']= str(config['Pools'][s_src_idx]['standards_plt_pool_locn'])
+			quant_standards[stnd_type]['Pools']['sources'][s_src_idx]['black_plt_well_locns'] 	= config['Pools'][s_src_idx]['black_plt_well_locns'] # creates list of well posn strings
+			src_idx 		+= 1
+	except ValueError as ve:
+		sys.exit("Access System Script: ValueError parsing standards config file from filepath <%s>. Cannot continue. Message: %s" % (standards_config_filepath, ve.message))
+	except Exception as e:
+		sys.exit("Access System Script: Exception parsing standards config file from filepath <%s>. Cannot continue. Message: %s" % (standards_config_filepath, e.message))
+
 
 	# print out quant_standards if in debug mode
 	if(args.debug == True):
-		print('-' * 80)
-		print("Standards are as follows:")
-		print('-' * 80)
+		print_debug_message('-' * 80)
+		print_debug_message("Standards are as follows:")
+		print_debug_message('-' * 80)
 		pprint(quant_standards)
-		print('-' * 80)
+		print_debug_message('-' * 80)
 
 	return
 
@@ -354,7 +361,7 @@ def parse_library_prep_config_file():
 	'''
 
 	if(args.debug == True):
-		print("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
 
 	return
 
@@ -365,7 +372,7 @@ def process_quantsetup():
 	'''Entry method for processing the quantsetup mode'''
 
 	if(args.debug == True):
-		print("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
 
 	# build the user interface to ask the user to the select files required 
 	display_gui_quantsetup()
@@ -376,7 +383,7 @@ def process_quantcalc():
 	'''Entry method for processing the quantcalc mode'''
 
 	if(args.debug == True):
-		print("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
 
 	return
 
@@ -397,7 +404,7 @@ class QuantSetupGUI:
 		'''Initialise a new frame for the GUI'''
 
 		if(args.debug == True):
-			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# setup any common styles and themes for the screens
 		setup_styles_and_themes()
@@ -590,7 +597,7 @@ class QuantSetupGUI:
 		'''Triggered when user has pressed the Select LIMS file button'''
 
 		if(args.debug == True):
-			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# clear error msg line in screen, summary text and disable create files button
 		self.clear_screen()
@@ -599,7 +606,7 @@ class QuantSetupGUI:
 		limsdir = os.path.normpath(settings.get('Quantification').get('quant_dir_lims_file_network'))
 
 		if(args.debug == True):
-			print("LIMS file directory: %s" % limsdir)
+			print_debug_message("LIMS file directory: %s" % limsdir)
 
 		# open file dialog and save selection N.B. if path not recognised it opens anyway
 		self.lims_src_plt_grp_filepath = askopenfilename(title  = "Select LIMS plate grouping file", initialdir = limsdir)
@@ -609,7 +616,7 @@ class QuantSetupGUI:
 
 		if((len(self.lims_src_plt_grp_filepath) > 0) and (os.path.isfile(self.lims_src_plt_grp_filepath))):
 			if(args.debug == True):
-				print("File chosen: %s" % self.lims_src_plt_grp_filepath)
+				print_debug_message("File chosen: %s" % self.lims_src_plt_grp_filepath)
 
 			# read file into memory
 			self.read_lims_plate_grouping_json_file()
@@ -633,7 +640,7 @@ class QuantSetupGUI:
 				self.btn_create_files.config(state = NORMAL)
 		else:
 			if(args.debug == True):
-				print("No file was selected!")
+				print_debug_message("No file was selected!")
 
 			# red error msg line in screen
 			self.display_message(True, "No file was selected, please try again.")		
@@ -644,14 +651,14 @@ class QuantSetupGUI:
 		'''Triggered when user has pressed the Check File button'''
 
 		if(args.debug == True):
-			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# validate that there are enough black plates in the stack
 		if(self.validate_number_of_black_plates_in_stack()):
 			self.display_message(False, "Validated number of black plates in stack, now creating experiment directory, please wait...")
 		else:
 			if(args.debug == True):
-				print("Failed to validate number of black plates in stack")
+				print_debug_message("Failed to validate number of black plates in stack")
 			return
 
 		# create expt dir using lims_plate_group_id
@@ -659,7 +666,7 @@ class QuantSetupGUI:
 			self.display_message(False, "Created experiment directory, now generating Echo csv files, please wait...")
 		else:
 			if(args.debug == True):
-				print("Failed to create experiment directory")
+				print_debug_message("Failed to create experiment directory")
 			return
 
 		# generate Echo csvs in expt dir
@@ -667,7 +674,7 @@ class QuantSetupGUI:
 			self.display_message(False, "ECHO csv files created, now generating RunDef file, please wait...")
 		else:
 			if(args.debug == True):
-				print("Failed to generate csv files")
+				print_debug_message("Failed to generate csv files")
 			return
 
 		# generate Access RunDef file
@@ -675,7 +682,7 @@ class QuantSetupGUI:
 			self.display_message(False, "RunDef file created in experiment directory, now tidying up, please wait...")
 		else:
 			if(args.debug == True):
-				print("Failed to generate RunDef file")
+				print_debug_message("Failed to generate RunDef file")
 			return
 
   		# create a new copy of the LIMS file and place it in the experiment directory
@@ -687,7 +694,7 @@ class QuantSetupGUI:
 			self.display_message(False, "The RunDef file should now be in the Tempo Inbox and ready to run from Tempo.\nYou can now Quit or open another LIMS file.")
 		except Exception as e:
 			if(args.debug == True):
-				print("Failed to copy LIMS file into experiment directory")
+				print_debug_message("Failed to copy LIMS file into experiment directory")
 
 			self.display_message(True, "ERROR: Exception copying the LIMS plate grouping file into the experiment directory.\nError Message: <%s>" % str(e))
 			return False
@@ -698,12 +705,12 @@ class QuantSetupGUI:
 		'''Display message on the screen'''
 
 		if(args.debug == True):
-			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
 			if(is_error):
-				print("Input is Error message")
+				print_debug_message("Input is Error message")
 			else:
-				print("Input is Standard message")
-			print("Input message: %s" % message)			
+				print_debug_message("Input is Standard message")
+			print_debug_message("Input message: %s" % message)			
 
 		# delete current message content
 		self.txt_msg_panel.delete('1.0', END)
@@ -724,7 +731,7 @@ class QuantSetupGUI:
 		'''Triggered when user has pressed the Quit button'''
 
 		if(args.debug == True):
-			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		if askyesno('Verify', 'Are you sure you want to Quit?'):
 			sys.exit()
@@ -735,7 +742,7 @@ class QuantSetupGUI:
 		'''Reads the data from a json file'''
 
 		if(args.debug == True):
-			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# read the file N.B. the with clause closes the file as soon as we are out of the with context.
 		# don't print or do anything in the with open clause as that keeps the file open longer.
@@ -743,10 +750,10 @@ class QuantSetupGUI:
 			self.data_lims_src_plt_grp = json.load(data_file)
 		
 		if(args.debug == True):
-			print("LIMS file data:")
-			print('-' * 80)
+			print_debug_message("LIMS file data:")
+			print_debug_message('-' * 80)
 			pprint(self.data_lims_src_plt_grp)
-			print('-' * 80)
+			print_debug_message('-' * 80)
 
 		return
 
@@ -761,14 +768,14 @@ class QuantSetupGUI:
 		'''
 
 		if(args.debug == True):
-			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# validation check: there should be certain fields in the json file
 		expected_fields = ['LIMS_PLATE_GROUP_ID', 'PLATES']
 		for expected_field in expected_fields:
 			if self.data_lims_src_plt_grp.has_key(expected_field):
 				if(args.debug == True):
-					print("Field located : %s" % expected_field)
+					print_debug_message("Field located : %s" % expected_field)
 			else:
 				self.display_message(True, "ERROR: Key field <%s> missing from this file. Cannot continue." % expected_field)
 				return False
@@ -778,8 +785,8 @@ class QuantSetupGUI:
 		self.data_summary['plates'] 				= {}
 
 		if(args.debug == True):
-			print("Run ID           = %s" % self.data_summary['lims_plate_group_id'])
-			print("Num plates found = %s" % self.data_summary['num_src_plts'])
+			print_debug_message("Run ID           = %s" % self.data_summary['lims_plate_group_id'])
+			print_debug_message("Num plates found = %s" % self.data_summary['num_src_plts'])
 
 		# validation check: there should be at least one plate
 		if(self.data_summary['num_src_plts'] == 0):
@@ -845,7 +852,7 @@ class QuantSetupGUI:
 		self.display_message(False, "LIMS file successfully validated. Plates found: %s\nPlease check and indicate how many black plates are in stack 4 and press 'Create Access Files'" % str(self.data_summary['num_src_plts']))
 
 		if(args.debug == True):
-			print(pprint(self.data_summary))
+			print_debug_message(pprint(self.data_summary))
 
 		return True
 
@@ -856,7 +863,7 @@ class QuantSetupGUI:
 		'''
 
 		if(args.debug == True):
-			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# define tags for formatting text
 		self.txt_summary.tag_configure('tag_title', font='arial 18 bold', foreground=fg_ok_colour, relief='raised',justify='center', underline='True')
@@ -910,7 +917,7 @@ class QuantSetupGUI:
 		'''Clears the various GUI widgets'''
 
 		if(args.debug == True):
-			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# clear the filepath 
 		self.lbl_lims_fp.configure(text = "")
@@ -935,7 +942,7 @@ class QuantSetupGUI:
 		'''Validate that the user has indicated that there are enough black plates in the stack'''
 
 		if(args.debug == True):
-			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# Clear the message panel
 		self.txt_msg_panel.delete('1.0', END)
@@ -944,8 +951,8 @@ class QuantSetupGUI:
 		num_blk_reqd = self.var_num_blk_plts_reqd.get()
 
 		if(args.debug == True):
-			print("Num plates required = %s" % str(num_blk_reqd))
-			print("Num plates in stack = %s" % str(num_blk_deck))
+			print_debug_message("Num plates required = %s" % str(num_blk_reqd))
+			print_debug_message("Num plates in stack = %s" % str(num_blk_deck))
 
 		if(num_blk_reqd == 0):
 			# error should be > 0
@@ -965,7 +972,7 @@ class QuantSetupGUI:
 			self.display_message(False, "Starting file creation process, please wait...")
 
 		if(args.debug == True):
-			print("Successfully validated number of black plates in stack")
+			print_debug_message("Successfully validated number of black plates in stack")
 
 		return True
 
@@ -973,12 +980,12 @@ class QuantSetupGUI:
 		'''Create the experiment directory based on the lims plate grouping id'''
 
 		if(args.debug == True):
-			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		self.expt_directory = os.path.join(settings.get('Common').get('dir_expt_root'), self.data_summary['lims_plate_group_id'])
 
 		if(args.debug == True):
-			print("Attempting to create experiment dir = %s" % self.expt_directory)
+			print_debug_message("Attempting to create experiment dir = %s" % self.expt_directory)
 
 		try:
 			check_and_create_directory(self.expt_directory)
@@ -987,7 +994,7 @@ class QuantSetupGUI:
 			return False
 
 		if(args.debug == True):
-			print("Successfully created experiment directory")
+			print_debug_message("Successfully created experiment directory")
 
 		return True
 
@@ -1001,7 +1008,7 @@ class QuantSetupGUI:
 		'''
 
 		if(args.debug == True):
-			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		if(not self.generate_sources_to_standards_csv_file()):
 			return False
@@ -1013,7 +1020,7 @@ class QuantSetupGUI:
 			return False
 
 		if(args.debug == True):
-			print("Successfully generated csv files")
+			print_debug_message("Successfully generated csv files")
 
 		return True
 
@@ -1025,7 +1032,7 @@ class QuantSetupGUI:
 		'''
 
 		if(args.debug == True):
-			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		stnd_type 							= self.data_summary['standards_type']
 		
@@ -1061,7 +1068,7 @@ class QuantSetupGUI:
 					s_plt_idx 					= str(i_plt_idx)
 
 					if(args.debug == True):
-						print("Plate indx = %s" % s_plt_idx)
+						print_debug_message("Plate indx = %s" % s_plt_idx)
 
 					src_plt_name 				= "DNAQ_source_%s" % s_plt_idx
 					src_plt_barcode 			= self.data_summary['plates'][s_plt_idx]['barcode']
@@ -1073,7 +1080,7 @@ class QuantSetupGUI:
 					standards_plt_pool_locn 	= quant_standards[stnd_type]['Pools']['sources'][s_plt_idx]['standards_plt_pool_locn']
 
 					if(args.debug == True):
-						print("standards_plt_pool_locn = %s" % str(standards_plt_pool_locn))
+						print_debug_message("standards_plt_pool_locn = %s" % str(standards_plt_pool_locn))
 
 					dest_well 					= standards_plt_pool_locn
 
@@ -1089,7 +1096,7 @@ class QuantSetupGUI:
 					while i_src_well_idx < len(curr_wells):
 
 						if(args.debug == True):
-							print("Well indx = %s" % str(i_src_well_idx))
+							print_debug_message("Well indx = %s" % str(i_src_well_idx))
 
 						if(curr_wells[i_src_well_idx]['ROLE'] == "SAMPLE" or curr_wells[i_src_well_idx]['ROLE'] == "CONTROL"):
 
@@ -1124,7 +1131,7 @@ class QuantSetupGUI:
 		'''
 
 		if(args.debug == True):
-			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		stnd_type 							= self.data_summary['standards_type']
 
@@ -1160,7 +1167,7 @@ class QuantSetupGUI:
 					s_plt_idx 					= str(i_plt_idx)
 
 					if(args.debug == True):
-						print("s_plt_idx - %s" % s_plt_idx)
+						print_debug_message("s_plt_idx - %s" % s_plt_idx)
 
 					src_plt_name 				= "DNAQ_source_%s" % s_plt_idx
 					src_plt_barcode 			= self.data_summary['plates'][s_plt_idx]['barcode']
@@ -1176,7 +1183,7 @@ class QuantSetupGUI:
 						s_src_well_idx = str(i_src_well_idx)
 
 						if(args.debug == True):
-							print("s_src_well_idx - %s" % s_src_well_idx)
+							print_debug_message("s_src_well_idx - %s" % s_src_well_idx)
 
 						if(curr_wells[i_src_well_idx]['ROLE'] == "SAMPLE" or curr_wells[i_src_well_idx]['ROLE'] == "CONTROL"):
 
@@ -1212,7 +1219,7 @@ class QuantSetupGUI:
 		'''
 
 		if(args.debug == True):
-			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		stnd_type 							= self.data_summary['standards_type']
 
@@ -1222,14 +1229,14 @@ class QuantSetupGUI:
 			csv_filepath_standards_to_black 	= os.path.join(self.expt_directory, settings.get('Quantification').get('quant_filename_standards_to_black_csv'))
 
 			if(args.debug == True):
-				print("csv_filepath_standards_to_black = %s" % csv_filepath_standards_to_black)
+				print_debug_message("csv_filepath_standards_to_black = %s" % csv_filepath_standards_to_black)
 
 			with open(csv_filepath_standards_to_black, 'wb') as csvfile:
 				# for csv file open in binary format.  delimiter is defaulted to comma, quote character is defaulted to doublequote, quoting defaults to quote minimal
 				csv_writer = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
 
 				if(args.debug == True):
-					print("csv writer open")
+					print_debug_message("csv writer open")
 				
 				# write header row
 				csv_writer.writerow(['Source Plate Name',
@@ -1243,7 +1250,7 @@ class QuantSetupGUI:
 									'Destination well'])
 
 				if(args.debug == True):
-					print("written header row")
+					print_debug_message("written header row")
 
 				# create rows for each src plate sample and control for each pool on the standards plate
 				src_plt_name 				= "DNAQ_STD"
@@ -1259,8 +1266,8 @@ class QuantSetupGUI:
 				num_ladder_reps 			= quant_standards[stnd_type]['Ladder']['num_of_ladder_reps_black_plate']
 
 				if(args.debug == True):
-					print("num_ladder_wells = %s" % str(num_ladder_wells))
-					print("num_ladder_reps = %s" % str(num_ladder_reps))
+					print_debug_message("num_ladder_wells = %s" % str(num_ladder_wells))
+					print_debug_message("num_ladder_reps = %s" % str(num_ladder_reps))
 
 				# perform ladder transfers num_of_ladder_reps_black_plate times
 				i_ladder_rep_idx 			= 0
@@ -1269,7 +1276,7 @@ class QuantSetupGUI:
 					# s_ladder_rep_idx = str(i_ladder_rep_idx)
 
 					if(args.debug == True):
-						print("Ladder rep idx = %s" % str(i_ladder_rep_idx))
+						print_debug_message("Ladder rep idx = %s" % str(i_ladder_rep_idx))
 					
 					# loop by ladder well, fetching source and destination well information and transfer volume from standards config file	
 					i_ladder_idx 				= 1
@@ -1278,24 +1285,24 @@ class QuantSetupGUI:
 						s_ladder_idx 				= str(i_ladder_idx)
 
 						if(args.debug == True):
-							print("Ladder idx = %s" % s_ladder_idx)
+							print_debug_message("Ladder idx = %s" % s_ladder_idx)
 										
 						src_well 					= quant_standards[stnd_type]['Ladder']['wells'][s_ladder_idx]['well_posn']
 
 						if(args.debug == True):
-							print("src_well = %s" % src_well)
+							print_debug_message("src_well = %s" % src_well)
 
 						src_transfer_vol 			= quant_standards[stnd_type]['Ladder']['wells'][s_ladder_idx]['vol_to_dispense_nl']
 
 						if(args.debug == True):
-							print("src_transfer_vol = %s" % src_transfer_vol)
+							print_debug_message("src_transfer_vol = %s" % src_transfer_vol)
 
 						dest_well 					= quant_standards[stnd_type]['Ladder']['wells'][s_ladder_idx]['black_plt_well_locns'][i_ladder_rep_idx]
 
 						if(args.debug == True):
 							# print("src_well = %s" % src_well)
 							# print("src_transfer_vol = %s" % src_transfer_vol)
-							print("dest_well = %s" % dest_well)
+							print_debug_message("dest_well = %s" % dest_well)
 
 						# append line to csv
 						csv_writer.writerow([src_plt_name,
@@ -1320,34 +1327,34 @@ class QuantSetupGUI:
 				src_transfer_vol 			= quant_standards[stnd_type]['Pools']['vol_pool_to_black_plate_nl'] # volume from standards config file
 
 				if(args.debug == True):
-					print("num_pool_replicates = %s" % num_pool_replicates)
-					print("src_transfer_vol = %s" % src_transfer_vol)
+					print_debug_message("num_pool_replicates = %s" % num_pool_replicates)
+					print_debug_message("src_transfer_vol = %s" % src_transfer_vol)
 
 				i_plt_idx 					= 1
 				while i_plt_idx <= self.data_summary['num_src_plts']:
 					s_plt_idx 				= str(i_plt_idx)
 
 					if(args.debug == True):
-						print("s_plt_idx = %s" % s_plt_idx)
+						print_debug_message("s_plt_idx = %s" % s_plt_idx)
 
 					# fetch the pool position on the standards plate 
 					src_well 				= quant_standards[stnd_type]['Pools']['sources'][s_plt_idx]['standards_plt_pool_locn']
 
 					if(args.debug == True):
-						print("src_well = %s" % src_well)
+						print_debug_message("src_well = %s" % src_well)
 
 					# create csv row for each pool replicate
 					i_pool_rep_idx 			= 0
 					while i_pool_rep_idx < num_pool_replicates:
 
 						if(args.debug == True):
-							print("i_pool_rep_idx = %s" % str(i_pool_rep_idx))
+							print_debug_message("i_pool_rep_idx = %s" % str(i_pool_rep_idx))
 						
 						# destination wells depend on number of replicates of pool required and the locations specified in the standards config file
 						dest_well 				= quant_standards[stnd_type]['Pools']['sources'][s_plt_idx]['black_plt_well_locns'][i_pool_rep_idx]
 
 						if(args.debug == True):
-							print("dest_well = %s" % dest_well)
+							print_debug_message("dest_well = %s" % dest_well)
 
 						# append line to csv
 						csv_writer.writerow([src_plt_name,
@@ -1377,7 +1384,7 @@ class QuantSetupGUI:
 		'''Generate the Tempo RunDef file for operating the Access System'''
 
 		if(args.debug == True):
-			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# directories and filepaths
 		try:
@@ -1387,23 +1394,23 @@ class QuantSetupGUI:
 			rundef_tempo_inbox_filepath = os.path.join(settings.get('Common').get('dir_tempo_inbox'), rundef_expt_filename)
 
 			if(args.debug == True):
-				print("rundef_template_filepath 	= %s" % rundef_template_filepath)
-				print("rundef_expt_filename     	= %s" % rundef_expt_filename)
-				print("rundef_expt_filepath     	= %s" % rundef_expt_filepath)
-				print("rundef_tempo_inbox_filepath 	= %s" % rundef_tempo_inbox_filepath)
+				print_debug_message("rundef_template_filepath 	= %s" % rundef_template_filepath)
+				print_debug_message("rundef_expt_filename     	= %s" % rundef_expt_filename)
+				print_debug_message("rundef_expt_filepath     	= %s" % rundef_expt_filepath)
+				print_debug_message("rundef_tempo_inbox_filepath 	= %s" % rundef_tempo_inbox_filepath)
 
 			# create a dictionary of search_string : value
 			search_term_dict 	= self.generate_rundef_search_dictionary()
 			search_list 		= search_term_dict.keys()
 
 			if(args.debug == True):
-				print("-" * 80)
-				print("Rundef search term dictionary:")
+				print_debug_message("-" * 80)
+				print_debug_message("Rundef search term dictionary:")
 				pprint(search_term_dict)
-				print("-" * 80)
-				print("Rundef search term list:")
+				print_debug_message("-" * 80)
+				print_debug_message("Rundef search term list:")
 				pprint(search_list)
-				print("-" * 80)
+				print_debug_message("-" * 80)
 
 		except Exception as e:
 			self.display_message(True, "ERROR: Exception creating the RunDef file when determining directory paths.\nError Message: <%s>" % str(e))
@@ -1442,7 +1449,7 @@ class QuantSetupGUI:
 		'''Generate the dictionary of fields to be replaced in the quantification rundef file'''
 
 		if(args.debug == True):
-			print("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		search_term_dict = {}
 
@@ -1562,10 +1569,10 @@ def check_and_create_directory(directory):
 	'''Check whether a directory exists and create it if not'''
 
 	if(args.debug == True):
-		print("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
 
 	if(args.debug == True):
-		print("Attempting to create directory = %s" % directory)
+		print_debug_message("Attempting to create directory = %s" % directory)
 
 	# check if the directory exists and create it if not
 	if not os.path.exists(directory):
@@ -1573,14 +1580,58 @@ def check_and_create_directory(directory):
 
 	return
 
+def print_debug_message(message):
+	'''Print a debug message'''
+
+	print("DEBUG: " + str(message))
+
+	return
+
+def read_configuration_file(filepath):
+	'''Reads a configuration file and checks for errors'''
+
+	if(args.debug == True):
+		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
+
+	try:
+		print_debug_message("Attempting to read config")
+		config = ConfigObj(filepath)
+	except ValueError as ve:
+		print_debug_message("Caught ValueError")
+		if(args.debug == True):
+			print_debug_message("-" * 80)
+			print_debug_message("ValueError raised:")
+			print_debug_message("Line: <%s> %s" % (ve.line_number, ve.line))
+			print_debug_message("Msg : %s" % ve.message)
+			print_debug_message("-" * 80)
+
+		sys.exit("Access System Script: ValueError parsing config file from filepath  <%s>. Cannot continue. Message: %s" % (filepath, ve.message))
+	except ConfigObjError as ce:
+		print_debug_message("Caught ConfigObjError")
+		if(args.debug == True):
+			print_debug_message("-" * 80)
+			print_debug_message("Part of Config that parsed successfully:")
+			pprint(ce.config)
+			print_debug_message("-" * 80)
+			print_debug_message("Errors raised:")
+			for er in ce.errors:
+				print_debug_message("- " * 40)
+				print_debug_message("Line: <%s> %s" % (er.line_number, er.line))
+				print_debug_message("Msg : %s" % er.message)
+			print_debug_message("-" * 80)
+
+		sys.exit("Access System Script: ConfigObjError parsing config file from filepath  <%s>. Cannot continue. Message: %s" % (filepath, er.message))
+
+	return config
+
 def regex_replace_field_in_xml(xml_string, re_string, replacement_string):
 	'''Use a Regular Expression to replace one value in an XML string with another'''
 
 	if(args.debug == True):
-		print("In %s" % inspect.currentframe().f_code.co_name)
-		print("XML string: %s" % xml_string)
-		print("RegEx string: %s" % re_string)
-		print("Replacement string: %s" % replacement_string)
+		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message("XML string: %s" % xml_string)
+		print_debug_message("RegEx string: %s" % re_string)
+		print_debug_message("Replacement string: %s" % replacement_string)
 
 
 	# Substitute in a string to replace the regex string currently there
@@ -1590,7 +1641,7 @@ def regex_replace_field_in_xml(xml_string, re_string, replacement_string):
 	xml_string_modified = re.sub(pattern, lambda m: substitutions[m.group(1)], xml_string)
 
 	if(args.debug == True):
-		print("Modified XML: %s" % xml_string_modified)
+		print_debug_message("Modified XML: %s" % xml_string_modified)
 
 	# return modified XML string
 	return xml_string_modified
@@ -1609,7 +1660,7 @@ def setup_styles_and_themes():
 	'''Create any common styles and themes for the GUI screens'''
 
 	if(args.debug == True):
-		print("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
 
 	# to get the combobox to display properly without a grey border we need to apply a style theme
 	combobox_style 			= ttk.Style()
@@ -1670,7 +1721,7 @@ def create_widget_combobox(widg_frame, widg_params):
 	'''
 
 	if(args.debug == True):
-		print("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
 		pprint(widg_params)
 
 	# create the combobox (NB. style and theme set beforehand to make this display well)
@@ -1700,7 +1751,7 @@ def create_widget_label(widg_frame, widg_params):
 	'''
 
 	if(args.debug == True):
-		print("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
 		pprint(widg_params)
 
 	# create the label
@@ -1731,7 +1782,7 @@ def create_widget_text(widg_frame, widg_params):
 	'''
 
 	if(args.debug == True):
-		print("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
 		pprint(widg_params)
 
 	# create the text widget
@@ -1765,7 +1816,7 @@ def add_widget_to_grid(widg, widg_frame, widg_params):
 	'''
 
 	if(args.debug == True):
-		print("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
 		pprint(widg_params)
 
 	# add the widget to the grid
@@ -1790,7 +1841,7 @@ def display_gui_quantsetup():
 	'''Display the quantification setup GUI'''
 
 	if(args.debug == True):
-		print("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
 
 	root 		= Tk()
 	root.geometry('%dx%d+%d+%d' % (settings.get('Common').get('gui_width'), settings.get('Common').get('gui_height'), settings.get('Common').get('gui_x_posn'), settings.get('Common').get('gui_y_posn')))
