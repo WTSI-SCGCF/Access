@@ -97,7 +97,7 @@ from pprint import pprint # for pretty printing e.g. lists and dictionaries
 # -----------------------------------------------------------------------------
 script_version 				= "1.0"
 
-config_filepath 			= 'config/access_system.cfg' # configuration filename
+config_filepath 			= '../Access_Configs/config/access_system.cfg' # configuration filename
 valid_modes     			= ['quantsetup'] # valid program modes
 args     					= {} # stores parsed command line arguments
 settings 					= {} # stores parsed configuration settings
