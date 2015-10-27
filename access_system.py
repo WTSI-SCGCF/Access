@@ -81,7 +81,6 @@ import csv 			# for reading/writing csv files
 import inspect 		# for getting method name
 import re 			# for regex expressions
 import shutil 		# for file copying
-import codecs 		# for reading utf-8 files
 
 from configobj 		import ConfigObj, ConfigObjError # for reading config files
 from Tkinter        import * 				# for the GUI interfaces
@@ -1423,23 +1422,27 @@ class QuantSetupGUI:
 
 		# open the template rundef file, and the new output rubdef file, and copy lines across
 		# replacing any terms matching those in the search_term_dict
+		# N.B. the rundef file is a UTF-8 encoded XML file, so each line needs to be decoded then re-encoded to write
 		i_line_num = 1
 		try:
-			with codecs.open(rundef_expt_filepath, "wt", encoding='utf8') as file_out:
-				with codecs.open(rundef_template_filepath, "rt", encoding='utf8') as file_in:
+			with open(rundef_expt_filepath, 'w') as file_out:
+				with open(rundef_template_filepath, 'r') as file_in:
 					# check each line in the template
 					for line in file_in:
-						# see if the line contains any of the search terms
+						# decode the line from utf-8 so we can work with it
+						u_line = line.decode('utf8')
+						# see if the line contains ANY of the search terms
 						for search_term in search_list:
 							# modify the line to replace the search term with the new lines generated in the dictionary
-							line = line.replace(search_term, search_term_dict[search_term])
+							u_line = u_line.replace(search_term, search_term_dict[search_term])
+						# encode the line to utf-8
+						line = u_line.encode('utf8')
 						# write the (potentially modified) line out to the new copy of the rundef file in the experiment directory
 						file_out.write(line)
 						i_line_num += 1
 		except Exception as e:
 			self.display_message(True, "ERROR: Exception creating the RunDef file at line <%s>.\nError Message: <%s>" % (str(i_line_num), str(e)))
 			return False
-
 
 		# create a new copy of the modified file and place it in the Tempo inbox directory
 		try:
