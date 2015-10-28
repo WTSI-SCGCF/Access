@@ -1489,14 +1489,14 @@ class QuantSetupGUI:
 		# create the source and destination plate rows for the sources pooling to the standards plate transfers
 		# add the first source (DNA source) plate row
 		s_src_stk_posn 						= str(i_srcs_init_stk_posn)
-		s_pooling_platemap_rows 			= 	(u'\t\t\t\t<Plate EchoPlateID="1" PlateName="DNAQ_source_1" PlateType="384PP" Barcode="%s" LidType="" PlateCategory="Source" '
+		s_pooling_platemap_rows 			= 	(u'\t\t<Plate EchoPlateID="1" PlateName="DNAQ_source_1" PlateType="384PP" Barcode="%s" LidType="" PlateCategory="Source" '
 												'LocationURL="deck://Deck/1/%s/" FinalLocation="deck://Deck/1/%s/" PlateAccess="Sequential" PreRunActionSetName="Source" RunActionSetName="" '
 												'PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNAQ_source_1" />\n' 
 												% (self.data_summary['plates']['1']['barcode'], s_src_stk_posn, s_src_stk_posn))
 		
 		# next append the destination (Standards) plate row which is in a fixed position (will then stay in the Echo destination drawer while the transfers run)
 		s_stnd_plt_id_num 					= str(self.data_summary['num_src_plts'] + 1) # standards destination set to 1 more than total source plates
-		s_pooling_platemap_rows 			+= 	(u'\t\t\t\t<Plate EchoPlateID="%s" PlateName="DNAQ_STD" PlateType="384PP_Dest" Barcode="" LidType="" PlateCategory="Destination" '
+		s_pooling_platemap_rows 			+= 	(u'\t\t<Plate EchoPlateID="%s" PlateName="DNAQ_STD" PlateType="384PP_Dest" Barcode="" LidType="" PlateCategory="Destination" '
 												'LocationURL="deck://Deck/1/%s/" FinalLocation="deck://Deck/1/%s/" PlateAccess="Sequential" PreRunActionSetName="DNAQ_STD" RunActionSetName="" '
 												'PostRunActionSetName="DNAQ_STD" StorageDeviceSetName="" EchoTemplate="DNAQ_STD" />\n' 
 												% (s_stnd_plt_id_num, s_stnd_plt_stk_posn, s_stnd_plt_stk_posn))
@@ -1508,7 +1508,7 @@ class QuantSetupGUI:
 		while i_src_idx <= self.data_summary['num_src_plts']:
 			s_src_idx 						= str(i_src_idx)
 			s_src_stk_posn 					= str(i_src_stk_posn)
-			s_pooling_platemap_rows 		+= 	(u'\t\t\t\t<Plate EchoPlateID="%s" PlateName="DNAQ_source_%s" PlateType="384PP" Barcode="%s" LidType="" PlateCategory="Source" '
+			s_pooling_platemap_rows 		+= 	(u'\t\t<Plate EchoPlateID="%s" PlateName="DNAQ_source_%s" PlateType="384PP" Barcode="%s" LidType="" PlateCategory="Source" '
 												'LocationURL="deck://Deck/1/%s/" FinalLocation="deck://Deck/1/%s/" PlateAccess="Sequential" PreRunActionSetName="Source" RunActionSetName="" '
 												'PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNAQ_source_%s" />\n' 
 												% (s_src_idx, s_src_idx, self.data_summary['plates'][s_src_idx]['barcode'], s_src_stk_posn, s_src_stk_posn, s_src_idx))
@@ -1527,14 +1527,14 @@ class QuantSetupGUI:
 			# add a source plate row
 			s_src_idx 						= str(i_src_idx)
 			s_src_stk_posn 					= str(i_src_stk_posn)
-			s_src_to_blks_rows 				+= 	(u'\t\t\t\t<Plate EchoPlateID="%s" PlateName="DNAQ_source_%s" PlateType="384PP" Barcode="%s" LidType="" PlateCategory="Source" '
+			s_src_to_blks_rows 				+= 	(u'\t\t<Plate EchoPlateID="%s" PlateName="DNAQ_source_%s" PlateType="384PP" Barcode="%s" LidType="" PlateCategory="Source" '
 												'LocationURL="deck://Deck/1/%s/" FinalLocation="deck://Deck/1/%s/" PlateAccess="Sequential" PreRunActionSetName="" RunActionSetName="" '
 												'PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNAQ_source_%s" />\n' 
 												% (s_src_idx, s_src_idx, self.data_summary['plates'][s_src_idx]['barcode'], s_src_stk_posn, s_src_stk_posn, s_src_idx))
 			s_black_plate_id_num 			= str(self.data_summary['num_src_plts'] + i_src_idx)
 
 			# add a corresponding destination plate row (these plates come from stack 4 and end up in stack 3)
-			s_src_to_blks_rows 				+= 	(u'\t\t\t\t<Plate EchoPlateID="%s" PlateName="DNAQ_Black_%s" PlateType="Corning_384PS_Black" Barcode="" LidType="" PlateCategory="Destination" '
+			s_src_to_blks_rows 				+= 	(u'\t\t<Plate EchoPlateID="%s" PlateName="DNAQ_Black_%s" PlateType="Corning_384PS_Black" Barcode="" LidType="" PlateCategory="Destination" '
 												'LocationURL="deck://Deck/4/*/" FinalLocation="deck://Deck/3/*/" PlateAccess="Sequential" PreRunActionSetName="" RunActionSetName="" '
 												'PostRunActionSetName="Destination" StorageDeviceSetName="" EchoTemplate="DNAQ_Black_%s" />\n' 
 												% (s_black_plate_id_num, s_src_idx, s_src_idx))
@@ -1556,13 +1556,13 @@ class QuantSetupGUI:
 
 		# create the source and destination rows for the standards plate to its black plate transfer
 		# add the standards source plate row (location is fixed)
-		s_stnd_to_blk_rows 					= 	(u'\t\t\t\t<Plate EchoPlateID="1" PlateName="DNAQ_STD" PlateType="384PP" Barcode="" LidType="" PlateCategory="Source" '
+		s_stnd_to_blk_rows 					= 	(u'\t\t<Plate EchoPlateID="1" PlateName="DNAQ_STD" PlateType="384PP" Barcode="" LidType="" PlateCategory="Source" '
 												'LocationURL="deck://Deck/1/%s/" FinalLocation="deck://Deck/1/%s/" PlateAccess="Sequential" PreRunActionSetName="Source" RunActionSetName="" '
 												'PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNAQ_STD" />\n' 
 												% (s_stnd_plt_stk_posn, s_stnd_plt_stk_posn))
 
 		# append the destination black plate row (these plates come from stack 4 and end up in stack 3)
-		s_stnd_to_blk_rows 					+= 	(u'\t\t\t\t<Plate EchoPlateID="2" PlateName="DNAQ_Black" PlateType="Corning_384PS_Black" Barcode="" LidType="" PlateCategory="Destination" '
+		s_stnd_to_blk_rows 					+= 	(u'\t\t<Plate EchoPlateID="2" PlateName="DNAQ_Black" PlateType="Corning_384PS_Black" Barcode="" LidType="" PlateCategory="Destination" '
 												'LocationURL="deck://Deck/4/*/" FinalLocation="deck://Deck/3/*/" PlateAccess="Sequential" PreRunActionSetName="" RunActionSetName="" '
 												'PostRunActionSetName="DNAQ_Black" StorageDeviceSetName="" EchoTemplate="DNAQ_Black" />\n')
 
