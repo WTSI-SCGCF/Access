@@ -70,6 +70,10 @@ TODO:
 
 * can we replace the text file message in "Your plates are quantified.txt" with something else?
 
+* add a barcode for the standards plate to the JSON file and read it in this script,
+setting it in the standards rows in the RunDef file. The standards plate may be pre-made and
+recorded in the LIMS? How does this gel with the idea of having a config file for the standards
+plate on the Access system and reading that into this script? How will they stay in sync?
 
 '''
 
@@ -82,12 +86,11 @@ import inspect 		# for getting method name
 import re 			# for regex expressions
 import shutil 		# for file copying
 
-from configobj 		import ConfigObj, ConfigObjError # for reading config files
-from Tkinter        import * 				# for the GUI interfaces
-import ttk 									# for the GUI interface widgets
-from tkMessageBox 	import askyesno 		# for pop-up message boxes
-from tkFileDialog 	import askopenfilename 	# for file selection
-
+from configobj 		import ConfigObj, ConfigObjError 	# for reading config files
+from Tkinter        import * 							# for the GUI interfaces
+import ttk 												# for the GUI interface widgets
+from tkMessageBox 	import askyesno 					# for pop-up message boxes
+from tkFileDialog 	import askopenfilename 				# for file selection
 
 from pprint import pprint # for pretty printing e.g. lists and dictionaries
 
@@ -546,7 +549,7 @@ class QuantSetupGUI:
 		self.lbl_num_blk_plts_deck 	= create_widget_label(frame, lbl_num_blk_plts_deck_params)
 
 
-		self.lst_stk_plate_count	= list(range(0,41)) # create list of numbers
+		self.lst_stk_plate_count	= list(range(0,21)) # create list of numbers 1-20
 		self.num_blk_plates_deck 	= IntVar(frame) # integer variable to hold selected value
 		self.num_blk_plates_deck.set(0) # initial value set at zero to make user check stack
 
@@ -1063,7 +1066,7 @@ class QuantSetupGUI:
 				# create rows for each src plate sample and control for each pool on the standards plate
 				src_plt_type 				= '384PP_AQ_SP_High'
 				src_transfer_vol 			= quant_standards[stnd_type]['Pools']['vol_src_to_pool_nl'] # volume from standards config file
-				dest_plate_name 			= 'DNAQ_STD'
+				dest_plate_name 			= 'DNAQ_standards'
 				dest_plate_barcode 			= None
 				dest_plate_type 			= '384PP_Dest'
 
@@ -1176,7 +1179,7 @@ class QuantSetupGUI:
 					src_plt_name 				= "DNAQ_source_%s" % s_plt_idx
 					src_plt_barcode 			= self.data_summary['plates'][s_plt_idx]['barcode']
 
-					dest_plate_name 			= "DNAQ_Black_%s" % s_plt_idx
+					dest_plate_name 			= "DNAQ_black_%s" % s_plt_idx
 					
 					# fetch the wells for this plate
 					curr_wells 					= self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['WELLS']
@@ -1257,10 +1260,12 @@ class QuantSetupGUI:
 					print_debug_message("written header row")
 
 				# create rows for each src plate sample and control for each pool on the standards plate
-				src_plt_name 				= "DNAQ_STD"
+				src_plt_name 				= "DNAQ_standards"
 				src_plt_barcode 			= None
 				src_plt_type 				= '384PP_AQ_SP_High'
-				dest_plate_name 			= 'DNAQ_STD'
+
+				# name of the destination plate is DNAQ_Black_n where n is number of sources + 1 (LIFO stack counting from top downwards)
+				dest_plate_name 			= 'DNAQ_black_' + str(self.data_summary['num_src_plts'] + 1)
 				dest_plate_barcode 			= None
 				dest_plate_type 			= 'Corning_384PS_Black'
 
@@ -1486,61 +1491,103 @@ class QuantSetupGUI:
 		stnd_type 							= self.data_summary['standards_type']
 		s_stnd_plt_stk_posn 				= quant_standards[stnd_type]['Information']['stnd_plt_stk_posn'] # from standards config
 		
+		# ---------------------------------------------------------------------
+		# Pooling from sources to Standards plate
+		# ---------------------------------------------------------------------
+		if(args.debug == True):
+			print_debug_message("Setting up rows for pooling to standards plate")
+
 		# create the source and destination plate rows for the sources pooling to the standards plate transfers
 		# add the first source (DNA source) plate row
-		s_src_stk_posn 						= str(i_srcs_init_stk_posn)
-		s_pooling_platemap_rows 			= 	(u'\t\t<Plate EchoPlateID="1" PlateName="DNAQ_source_1" PlateType="384PP" Barcode="%s" LidType="" PlateCategory="Source" '
+		i_src_idx 							= 1
+
+		if (i_src_idx < 10):
+			s_src_plt_num					= "0" + str(i_src_idx)				
+		else:
+			s_src_plt_num					= str(i_src_idx)
+
+		i_src_stk_posn 						= i_srcs_init_stk_posn
+		s_src_stk_posn 						= str(i_src_stk_posn)
+		s_plate_barcode 					= self.data_summary['plates']['1']['barcode']
+		s_pooling_platemap_rows 			= 	(u'\t\t<Plate EchoPlateID="SRC%s" PlateName="DNAQ_source_%s" PlateType="384PP" Barcode="%s" LidType="" PlateCategory="Source" '
 												'LocationURL="deck://Deck/1/%s/" FinalLocation="deck://Deck/1/%s/" PlateAccess="Sequential" PreRunActionSetName="Source" RunActionSetName="" '
-												'PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNAQ_source_1" />\n' 
-												% (self.data_summary['plates']['1']['barcode'], s_src_stk_posn, s_src_stk_posn))
+												'PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNAQ_source_%s" />\n' 
+												% (s_src_plt_num, s_src_plt_num, s_plate_barcode, s_src_stk_posn, s_src_stk_posn, s_src_plt_num))
 		
 		# next append the destination (Standards) plate row which is in a fixed position (will then stay in the Echo destination drawer while the transfers run)
-		s_stnd_plt_id_num 					= str(self.data_summary['num_src_plts'] + 1) # standards destination set to 1 more than total source plates
-		s_pooling_platemap_rows 			+= 	(u'\t\t<Plate EchoPlateID="%s" PlateName="DNAQ_STD" PlateType="384PP_Dest" Barcode="" LidType="" PlateCategory="Destination" '
-												'LocationURL="deck://Deck/1/%s/" FinalLocation="deck://Deck/1/%s/" PlateAccess="Sequential" PreRunActionSetName="DNAQ_STD" RunActionSetName="" '
-												'PostRunActionSetName="DNAQ_STD" StorageDeviceSetName="" EchoTemplate="DNAQ_STD" />\n' 
-												% (s_stnd_plt_id_num, s_stnd_plt_stk_posn, s_stnd_plt_stk_posn))
+		s_pooling_platemap_rows 			+= 	(u'\t\t<Plate EchoPlateID="STD" PlateName="DNAQ_standards" PlateType="384PP_Dest" Barcode="" LidType="" PlateCategory="Destination" '
+												'LocationURL="deck://Deck/1/%s/" FinalLocation="deck://Deck/1/%s/" PlateAccess="Sequential" PreRunActionSetName="DNAQ_standards" RunActionSetName="" '
+												'PostRunActionSetName="DNAQ_standards" StorageDeviceSetName="" EchoTemplate="DNAQ_standards" />\n' 
+												% (s_stnd_plt_stk_posn, s_stnd_plt_stk_posn))
 
-		# append the remaining source (DNA source) plate rows
-		i_src_stk_posn 						= i_srcs_init_stk_posn
-		i_src_idx      						= 2 # start at second plate
+		# if more than one source plt append the remaining source (DNA source) plate rows
+		i_src_stk_posn 						+= 1 # increment stack position
+		i_src_idx 							+= 1 # increment source plate index
 
 		while i_src_idx <= self.data_summary['num_src_plts']:
 			s_src_idx 						= str(i_src_idx)
+
+			# add zero prefix if needed
+			if (i_src_idx < 10):
+				s_src_plt_num				= "0" + str(i_src_idx)				
+			else:
+				s_src_plt_num				= str(i_src_idx)
+
 			s_src_stk_posn 					= str(i_src_stk_posn)
-			s_pooling_platemap_rows 		+= 	(u'\t\t<Plate EchoPlateID="%s" PlateName="DNAQ_source_%s" PlateType="384PP" Barcode="%s" LidType="" PlateCategory="Source" '
+			s_plate_barcode 				= self.data_summary['plates'][s_src_idx]['barcode']
+			s_pooling_platemap_rows 		+= 	(u'\t\t<Plate EchoPlateID="SRC%s" PlateName="DNAQ_source_%s" PlateType="384PP" Barcode="%s" LidType="" PlateCategory="Source" '
 												'LocationURL="deck://Deck/1/%s/" FinalLocation="deck://Deck/1/%s/" PlateAccess="Sequential" PreRunActionSetName="Source" RunActionSetName="" '
 												'PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNAQ_source_%s" />\n' 
-												% (s_src_idx, s_src_idx, self.data_summary['plates'][s_src_idx]['barcode'], s_src_stk_posn, s_src_stk_posn, s_src_idx))
+												% (s_src_plt_num, s_src_plt_num, s_plate_barcode, s_src_stk_posn, s_src_stk_posn, s_src_plt_num))
 			i_src_stk_posn 					+= 1 # increment stack position
 			i_src_idx 						+= 1 # increment source plate index
 
 		search_term_dict['SSS_POOLING_PLATEMAP_ROWS_SSS'] 					= s_pooling_platemap_rows.encode('utf-8')
+
+		# ---------------------------------------------------------------------
+		# Sources to Black plates
+		# ---------------------------------------------------------------------
+		if(args.debug == True):
+			print_debug_message("Setting up rows for sources to black plates")
 
 		# create the source and destination rows for the sources to black plates transfers
 		# for each source add a destination row
 		s_src_to_blks_rows 					= ""
 		i_src_stk_posn 						= i_srcs_init_stk_posn
 		i_src_idx      						= 1
-		
+		i_dest_idx 							= 1
+		i_dest_plt_stk_posn 				= self.num_blk_plates_deck.get()
+	
 		while i_src_idx <= self.data_summary['num_src_plts']:
 			# add a source plate row
 			s_src_idx 						= str(i_src_idx)
+			if (i_src_idx < 10):
+				s_src_plt_num				= "0" + str(i_src_idx)				
+			else:
+				s_src_plt_num				= str(i_src_idx)
+
 			s_src_stk_posn 					= str(i_src_stk_posn)
 			s_plate_barcode 				= self.data_summary['plates'][s_src_idx]['barcode']
-			s_src_to_blks_rows 				+= 	(u'\t\t<Plate EchoPlateID="%s" PlateName="DNAQ_source_%s" PlateType="384PP" Barcode="%s" LidType="" PlateCategory="Source" '
+			s_src_to_blks_rows 				+= 	(u'\t\t<Plate EchoPlateID="SRC%s" PlateName="DNAQ_source_%s" PlateType="384PP" Barcode="%s" LidType="" PlateCategory="Source" '
 												'LocationURL="deck://Deck/1/%s/" FinalLocation="deck://Deck/1/%s/" PlateAccess="Sequential" PreRunActionSetName="" RunActionSetName="" '
 												'PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNAQ_source_%s" />\n' 
-												% (s_src_idx, s_src_idx, s_plate_barcode, s_src_stk_posn, s_src_stk_posn, s_src_idx))
-			s_black_plate_id_num 			= str(self.data_summary['num_src_plts'] + i_src_idx)
+												% (s_src_plt_num, s_src_plt_num, s_plate_barcode, s_src_stk_posn, s_src_stk_posn, s_src_plt_num))
 
-			# add a corresponding destination plate row (these plates come from stack 4 and end up in stack 3)
-			s_src_to_blks_rows 				+= 	(u'\t\t<Plate EchoPlateID="%s" PlateName="DNAQ_Black_%s" PlateType="Corning_384PS_Black" Barcode="" LidType="" PlateCategory="Destination" '
-												'LocationURL="deck://Deck/4/*/" FinalLocation="deck://Deck/3/*/" PlateAccess="Sequential" PreRunActionSetName="" RunActionSetName="" '
-												'PostRunActionSetName="Destination" StorageDeviceSetName="" EchoTemplate="DNAQ_Black_%s" />\n' 
-												% (s_black_plate_id_num, s_src_idx, s_src_idx))
+			# add a corresponding destination plate row (these plates come from stack 4 and end up in stack 3, last in first out so numbered top down)
+			if (i_dest_idx < 10):
+				s_dest_plt_num				= "0" + str(i_dest_idx)				
+			else:
+				s_dest_plt_num				= str(i_dest_idx)
+
+			s_dest_stk_posn 				= str(i_dest_plt_stk_posn)
+			s_src_to_blks_rows 				+= 	(u'\t\t<Plate EchoPlateID="DEST%s" PlateName="DNAQ_black_%s" PlateType="Corning_384PS_Black" Barcode="" LidType="" PlateCategory="Destination" '
+												'LocationURL="deck://Deck/4/%s/" FinalLocation="deck://Deck/3/*/" PlateAccess="Sequential" PreRunActionSetName="" RunActionSetName="" '
+												'PostRunActionSetName="Destination" StorageDeviceSetName="" EchoTemplate="DNAQ_black_%s" />\n' 
+												% (s_dest_plt_num, s_dest_plt_num, s_dest_stk_posn, s_dest_plt_num))
 			i_src_stk_posn 					+= 1 # increment stack position
 			i_src_idx 						+= 1 # increment source plate index
+			i_dest_idx 						+= 1 # increment destination plate index
+			i_dest_plt_stk_posn 			-= 1 # decrement destination plate stack position
 
 		search_term_dict['SSS_SOURCES_PLATEMAP_ROWS_SSS'] 					= s_src_to_blks_rows.encode('utf-8')
 
@@ -1555,31 +1602,59 @@ class QuantSetupGUI:
 		# <DeviceName>FLUOstar</DeviceName>
 		# </PHERAstar_Read_Plate>
 
+		# ---------------------------------------------------------------------
+		# Standards to Black plate
+		# ---------------------------------------------------------------------
+		if(args.debug == True):
+			print_debug_message("Setting up rows for standards plate to black plate")
+
 		# create the source and destination rows for the standards plate to its black plate transfer
+		# EchoPlateID is one more than number of sources
+		i_blk_plt_idx 						= self.data_summary['num_src_plts'] + 1
+		
+		if (i_blk_plt_idx < 10):
+			s_blk_plt_num					= "0" + str(i_blk_plt_idx)
+		else:
+			s_blk_plt_num					= str(i_blk_plt_idx)
+
+		# stack position depends on total number of black plates in the stack
+		s_blk_plt_stk_posn 					= str(self.num_blk_plates_deck.get() - self.data_summary['num_src_plts'])
+
 		# add the standards source plate row (location is fixed)
-		s_stnd_to_blk_rows 					= 	(u'\t\t<Plate EchoPlateID="1" PlateName="DNAQ_STD" PlateType="384PP" Barcode="" LidType="" PlateCategory="Source" '
+		s_stnd_to_blk_rows 					= 	(u'\t\t<Plate EchoPlateID="STD" PlateName="DNAQ_standards" PlateType="384PP" Barcode="" LidType="" PlateCategory="Source" '
 												'LocationURL="deck://Deck/1/%s/" FinalLocation="deck://Deck/1/%s/" PlateAccess="Sequential" PreRunActionSetName="Source" RunActionSetName="" '
-												'PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNAQ_STD" />\n' 
+												'PostRunActionSetName="" StorageDeviceSetName="" EchoTemplate="DNAQ_standards" />\n' 
 												% (s_stnd_plt_stk_posn, s_stnd_plt_stk_posn))
 
 		# append the destination black plate row (these plates come from stack 4 and end up in stack 3)
-		s_stnd_to_blk_rows 					+= 	(u'\t\t<Plate EchoPlateID="2" PlateName="DNAQ_Black" PlateType="Corning_384PS_Black" Barcode="" LidType="" PlateCategory="Destination" '
-												'LocationURL="deck://Deck/4/*/" FinalLocation="deck://Deck/3/*/" PlateAccess="Sequential" PreRunActionSetName="" RunActionSetName="" '
-												'PostRunActionSetName="DNAQ_Black" StorageDeviceSetName="" EchoTemplate="DNAQ_Black" />\n')
+		s_stnd_to_blk_rows 					+= 	(u'\t\t<Plate EchoPlateID="DEST%s" PlateName="DNAQ_black_%s" PlateType="Corning_384PS_Black" Barcode="" LidType="" PlateCategory="Destination" '
+												'LocationURL="deck://Deck/4/%s/" FinalLocation="deck://Deck/3/*/" PlateAccess="Sequential" PreRunActionSetName="" RunActionSetName="" '
+												'PostRunActionSetName="DNAQ_black_%s" StorageDeviceSetName="" EchoTemplate="DNAQ_black_%s" />\n'
+												% (s_blk_plt_num, s_blk_plt_num, s_blk_plt_stk_posn, s_blk_plt_num, s_blk_plt_num))
 
 		search_term_dict['SSS_STANDARDS_PLATEMAP_ROWS_SSS'] 				= s_stnd_to_blk_rows.encode('utf-8')
 
+
+		# ---------------------------------------------------------------------
+		# Plate storage section
+		# ---------------------------------------------------------------------
+		if(args.debug == True):
+			print_debug_message("Setting up the plate storage standards plate row")
 
 		# PlateID,EchoPlateID,PlateName,PlateBarcode,PlateType,PlateCategory,LidType,Sealed,PlateStatus,OriginalLocation,FinalLocation,
 		# CurrentLocation,RunLocation,CurrentRotation,PlateRename,PlateState,LidLocation
 
 		# create the standards plate row for the plate storage map
-		s_plate_storage_std_row  			= (u'1844,1,DNAQ_STD,,384PP_Dest,Destination,,False,Unknown,deck://Deck/1/1/,deck://Deck/1/1/,deck://Deck/1/1/,,0,,Unknown,,\n')
+		s_plate_storage_std_row  			= 	(u'1844,STD,DNAQ_standards,,384PP_Dest,Destination,,False,Unknown,deck://Deck/1/%s/,deck://Deck/1/%s/,deck://Deck/1/%s/,,0,,Unknown,,\n'
+												% (s_stnd_plt_stk_posn, s_stnd_plt_stk_posn, s_stnd_plt_stk_posn))
 
 		search_term_dict['SSS_PLATE_STORAGE_STD_PLATE_SSS'] 					= s_plate_storage_std_row.encode('utf-8')
 
+		if(args.debug == True):
+			print_debug_message("Setting up the plate storage source plate rows")
+
 		# create the source plate rows for the plate storage map
-		# e.g. 1845,0,DNAQ_source_1,,384PP,Source,,False,Unknown,deck://Deck/1/5/,deck://Deck/1/5/,deck://Deck/1/5/,,0,,Unknown,,
+		# e.g. 1845,SRC01,DNAQ_source_01,,384PP,Source,,False,Unknown,deck://Deck/1/5/,deck://Deck/1/5/,deck://Deck/1/5/,,0,,Unknown,,
 		# 1845 -> 1860 so 16 max
 		s_plate_storage_src_rows			= ""
 		i_src_stk_posn 						= i_srcs_init_stk_posn
@@ -1589,11 +1664,16 @@ class QuantSetupGUI:
 		while i_src_idx <= self.data_summary['num_src_plts']:
 			s_src_idx 						= str(i_src_idx)
 			s_src_stk_posn 					= str(i_src_stk_posn)
+			if (i_src_idx < 10):
+				s_src_plt_num		= "0" + str(i_src_idx)
+			else:
+				s_src_plt_num		= str(i_src_idx)
+
 			s_plate_id 						= str(i_plate_id)
 			s_plate_barcode 				= self.data_summary['plates'][s_src_idx]['barcode']
 
-			s_plate_storage_src_rows 		+= (u'%s,%s,DNAQ_source_%s,%s,384PP,Source,,False,Unknown,deck://Deck/1/%s/,deck://Deck/1/%s/,deck://Deck/1/%s/,,0,,Unknown,,\n'
-											% (s_plate_id, s_src_stk_posn, s_src_idx, s_plate_barcode, s_src_stk_posn, s_src_stk_posn, s_src_stk_posn))
+			s_plate_storage_src_rows 		+= (u'%s,SRC%s,DNAQ_source_%s,%s,384PP,Source,,False,Unknown,deck://Deck/1/%s/,deck://Deck/1/%s/,deck://Deck/1/%s/,,0,,Unknown,,\n'
+											% (s_plate_id, s_src_plt_num, s_src_idx, s_plate_barcode, s_src_stk_posn, s_src_stk_posn, s_src_stk_posn))
 
 			i_src_stk_posn 					+= 1 # increment stack position
 			i_src_idx 						+= 1 # increment source plate index
@@ -1601,22 +1681,35 @@ class QuantSetupGUI:
 
 		search_term_dict['SSS_PLATE_STORAGE_SRC_PLATES_SSS'] 					= s_plate_storage_src_rows.encode('utf-8')
 
+		if(args.debug == True):
+			print_debug_message("Setting up the plate storage destination plate rows")
+
 		# create the destination plate rows for the plate storage map
-		# e.g. 1861,0,DNAQ_Black,,Corning_384PS_Black,Destination,,False,Unknown,deck://Deck/4/1/,deck://Deck/3/*/,deck://Deck/4/1/,,0,,Unknown,,
-		# 1861 -> 1880  NEED MAX 40!!
+		# e.g. 1861,DEST20,DNAQ_Black,,Corning_384PS_Black,Destination,,False,Unknown,deck://Deck/4/1/,deck://Deck/3/*/,deck://Deck/4/1/,,0,,Unknown,,
+		# 1861 -> 1880
 		s_plate_storage_dest_rows			= ""
 		i_dest_idx      					= 1
-		i_plate_id 							= 1861
-		
+		i_plate_id 							= 1880
+		i_dest_plt_echo_id_idx 				= self.num_blk_plates_deck.get()
+
+		# LIFO stack so number from top downwards
 		while i_dest_idx <= self.num_blk_plates_deck.get():
 			s_plate_id 						= str(i_plate_id)
-			s_dest_stk_posn 				= str(i_dest_idx)
+			s_dest_stk_posn					= str(i_dest_idx)
 
-			s_plate_storage_dest_rows 		+= (u'%s,0,DNAQ_Black,,Corning_384PS_Black,Destination,,False,Unknown,deck://Deck/4/%s/,deck://Deck/3/*/,deck://Deck/4/%s/,,0,,Unknown,,\n'
-											% (s_plate_id, s_dest_stk_posn, s_dest_stk_posn))
+			if (i_dest_plt_echo_id_idx < 10):
+				s_dest_plt_echo_id_idx		= "0" + str(i_dest_plt_echo_id_idx)
+			else:
+				s_dest_plt_echo_id_idx		= str(i_dest_plt_echo_id_idx)
+
+			s_dest_platename_idx  			= str(i_dest_plt_echo_id_idx)
+
+			s_plate_storage_dest_rows 		+= (u'%s,DEST%s,DNAQ_black_%s,,Corning_384PS_Black,Destination,,False,Unknown,deck://Deck/4/%s/,deck://Deck/3/*/,deck://Deck/4/%s/,,0,,Unknown,,\n'
+											% (s_plate_id, s_dest_plt_echo_id_idx, s_dest_platename_idx, s_dest_stk_posn, s_dest_stk_posn))
 
 			i_dest_idx 						+= 1 # increment source plate index
-			i_plate_id 						+= 1 # increment source plate id
+			i_plate_id 						-= 1 # decrement source plate id
+			i_dest_plt_echo_id_idx 			-= 1 # decrement destination echo id
 
 		search_term_dict['SSS_PLATE_STORAGE_DEST_PLATES_SSS'] 					= s_plate_storage_dest_rows.encode('utf-8')
 
