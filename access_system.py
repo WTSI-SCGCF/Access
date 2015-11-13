@@ -16,7 +16,7 @@ Initial version 								     Andrew Sparkes    Oct 2015
 Modes
 
 -------------------------------------------------------------------------------
-quantsetup - Quantification set up process
+quant - Quantification set up process
 -------------------------------------------------------------------------------
 GUI-based mode to handle the creation of the rundef and echo csv files required 
 for the quantification process.
@@ -85,6 +85,7 @@ import csv 			# for reading/writing csv files
 import inspect 		# for getting method name
 import re 			# for regex expressions
 import shutil 		# for file copying
+import time 		# for timestamps
 
 from configobj 		import ConfigObj, ConfigObjError 	# for reading config files
 from Tkinter        import * 							# for the GUI interfaces
@@ -100,7 +101,7 @@ from pprint import pprint # for pretty printing e.g. lists and dictionaries
 script_version 				= "1.0"
 
 config_filepath 			= '../Access_Configs/config/access_system.cfg' # configuration filename
-valid_modes     			= ['quantsetup'] # valid program modes
+valid_modes     			= ['quant'] # valid program modes
 args     					= {} # stores parsed command line arguments
 settings 					= {} # stores parsed configuration settings
 valid_quant_standards  		= ['SS2'] # list of the valid standards types
@@ -135,7 +136,7 @@ def parse_command_line_arguments():
 	parser = argparse.ArgumentParser()
 	parser.add_argument("--debug", 			help="Debug mode for development, default is off.", 	action="store_true")
 	parser.add_argument("-v", "--verbose", 	help="increase log output verbosity", 					action="store_true")
-	parser.add_argument("-m", "--mode", 	help="Mode to run script in i.e. quantsetup or quant.", type=str)
+	parser.add_argument("-m", "--mode", 	help="Mode to run script in e.g. quant.", type=str)
 	global args
 	args = parser.parse_args()
 	
@@ -249,7 +250,7 @@ def parse_access_system_config_file():
 	return
 
 
-def parse_quantification_standards_config_file(stnd_type):
+def parse_quant_standards_config_file(stnd_type):
 	'''Parse the settings from the selected standards configuration file.
 
 	There will be a version-controlled standards file for each type of standards plate.
@@ -375,14 +376,14 @@ def parse_library_prep_config_file():
 # -----------------------------------------------------------------------------
 # Processing Methods
 # -----------------------------------------------------------------------------
-def process_quantsetup():
-	'''Entry method for processing the quantsetup mode'''
+def process_quant():
+	'''Entry method for processing the quant mode'''
 
 	if(args.debug == True):
 		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
 
 	# build the user interface to ask the user to the select files required 
-	display_gui_quantsetup()
+	display_gui_quant()
 
 	return
 
@@ -397,7 +398,7 @@ def process_quantcalc():
 # -----------------------------------------------------------------------------
 # GUI Screen Classes
 # -----------------------------------------------------------------------------
-class QuantSetupGUI:
+class QuantificationGUI:
 	'''GUI class for quantification setup'''
 
 	# -----------------------------------------------------------------------------
@@ -411,27 +412,27 @@ class QuantSetupGUI:
 		'''Initialise a new frame for the GUI'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# setup any common styles and themes for the screens
 		setup_styles_and_themes()
 
-		# containing frame for the contents
-		frame 					= Frame(master, bg = "", colormap = "new")
-		frame.pack(fill = BOTH, expand = 1) # expand the frame to fill the root window
+		# root holds the main frame which holds a number of sub-frames
+		main_frame 				= Frame(master, bg = "", colormap = "new")
+		main_frame.pack(fill = BOTH, expand = 1) # expand the main frame to fill the root window
 
 		# give columns equal weighting
 		col_num = 0
 		while (col_num < 4):
-			frame.grid_columnconfigure(col_num, weight=1)
+			main_frame.grid_columnconfigure(col_num, weight=1)
 			col_num += 1
 
 		# define the GUI widget elements by row
 		# ---------------------------------------------------------------------
-		# Row 0 - Team name and Sanger logo
+		# main_frame row 0 - Team name and Sanger logo
 		# ---------------------------------------------------------------------
-		s_script_info = "Single Cell Genomics Core Facility\nScript Version: %s" % script_version
-		frame.grid_rowconfigure(0, weight=1)
+		s_script_info 			= "Single Cell Genomics Core Facility\nScript Version: %s" % script_version
+		main_frame.grid_rowconfigure(0, weight=1)
 		lbl_scgcf_params 		= {'widg_text':s_script_info, 
 									'widg_fg':colour_lt_green,
 									'widg_font':font_verdana_normal_italic,
@@ -439,7 +440,7 @@ class QuantSetupGUI:
 									'grid_col':0,
 									'grid_cols':2,
 									'grid_sticky':NW}
-		self.lbl_scgcf 			= create_widget_label(frame, lbl_scgcf_params)
+		self.lbl_scgcf 			= create_widget_label(main_frame, lbl_scgcf_params)
 
 		self.logo_image			= PhotoImage(file='images/sanger_logo.ppm')
 		lbl_logo_params			= {'widg_image':self.logo_image,
@@ -448,13 +449,13 @@ class QuantSetupGUI:
 									'grid_col':2,
 									'grid_cols':2,
 									'grid_sticky':NE}
-		self.lbl_logo 			= create_widget_label(frame, lbl_logo_params)
+		self.lbl_logo 			= create_widget_label(main_frame, lbl_logo_params)
 
 		# ---------------------------------------------------------------------
-		# Row 1 - Title label
+		# main_frame row 1 - Title label
 		# ---------------------------------------------------------------------
-		frame.grid_rowconfigure(1, weight=1)
-		lbl_title_params 		= {'widg_text':"Quantification Setup", 
+		main_frame.grid_rowconfigure(1, weight=1)
+		lbl_title_params 		= {'widg_text':"DNA Quantification", 
 									'widg_fg':colour_blue,
 									'widg_font':font_arial_huge_bold,
 									'widg_justify':CENTER,
@@ -463,12 +464,62 @@ class QuantSetupGUI:
 									'grid_col':0,
 									'grid_cols':4,
 									'grid_sticky':W+E}
-		self.lbl_title 			= create_widget_label(frame, lbl_title_params)
+		self.lbl_title 			= create_widget_label(main_frame, lbl_title_params)
 
 		# ---------------------------------------------------------------------
-		# Row 2 - Instructions for user text area
+		#  main_frame row 2 - Sub-Frame initially holding Quantification Setup
 		# ---------------------------------------------------------------------
-		frame.grid_rowconfigure(2, weight=1)
+		main_frame.grid_rowconfigure(2, weight=1)
+		quant_setup_frame 		= self.create_quantification_setup_frame(main_frame)
+		# quant_setup_frame.pack(fill = BOTH, expand = 1) # expand the sub-frame to fill the parent frame row
+		quant_setup_frame.grid(row = 2, column = 0, rowspan = 1, columnspan = 4, sticky = N+S+E+W)
+
+		# ---------------------------------------------------------------------
+		# main_frame row 3 - Message panel
+		# ---------------------------------------------------------------------
+		main_frame.grid_rowconfigure(3, weight=1)
+		message_frame 			= self.create_message_frame(main_frame)
+		# message_frame.pack(fill = BOTH, expand = 1) # expand the sub-frame to fill the parent frame row
+		message_frame.grid(row = 3, column = 0, rowspan = 1, columnspan = 4, sticky = N+S+E+W)
+
+		# ---------------------------------------------------------------------
+		# main_frame row 4 - Quit and Create Access Files buttons
+		# ---------------------------------------------------------------------
+		main_frame.grid_rowconfigure(4, weight=1)
+		btn_quit_params 		= {'widg_text':"Quit",
+									'widg_width':12,
+									'widg_command':self.quit_button_callback,
+									'grid_row':4,
+									'grid_col':0,
+									'grid_cols':1,
+									'grid_sticky':SW}
+		self.btn_quit 			= create_widget_button(main_frame, btn_quit_params)
+
+		btn_create_files_params = {'widg_text':"Create Access Files",
+									'widg_width':16,
+									'widg_command':self.create_access_files_button_callback,
+									'widg_state':DISABLED,
+									'grid_row':4,
+									'grid_col':3,
+									'grid_cols':1,
+									'grid_sticky':SE}
+		self.btn_create_files 	= create_widget_button(main_frame, btn_create_files_params)
+
+	def create_quantification_setup_frame(self, parent_frame):
+		'''Build the quantification setup frame for the main GUI'''
+
+		frame 					= Frame(parent_frame, bg = "", colormap = "new")
+
+		# give columns equal weighting
+		col_num = 0
+		while (col_num < 4):
+			frame.grid_columnconfigure(col_num, weight=1)
+			col_num += 1
+
+		# ---------------------------------------------------------------------
+		# frame row 0 - Instructions for user text area
+		# ---------------------------------------------------------------------
+		frame.grid_rowconfigure(0, weight=1)
 		self.instr_text  		= "Click 'Select File' to choose the Quantification plate grouping file downloaded "\
 		"from the LIMS (or the equivalent manually created file). Check the summary of the information from the file, "\
 		"confirm how many black plates are loaded into stack 4 and then press 'Create Access Files' to create the RunDef "\
@@ -476,53 +527,53 @@ class QuantSetupGUI:
 		txt_instr_params 		= {'widg_text':self.instr_text, 
 									'widg_height':3,
 									'widg_state':DISABLED,
-									'grid_row':2,
+									'grid_row':0,
 									'grid_col':0,
 									'grid_cols':4,
 									'grid_sticky':NW+NE}
 		self.txt_instr 			= create_widget_text(frame, txt_instr_params)
 
 		# ---------------------------------------------------------------------
-		# Row 3 - LIMS filepath and button
+		# frame row 1 - LIMS filepath and button
 		# ---------------------------------------------------------------------
-		frame.grid_rowconfigure(3, weight=1)
+		frame.grid_rowconfigure(1, weight=1)
 		lbl_lims_fp_params 		= {'widg_bg':colour_yellow,
 									'widg_font':font_courier_normal,
 									'widg_width':90,
-									'grid_row':3,
+									'grid_row':1,
 									'grid_col':0,
 									'grid_cols':3,
-									'grid_sticky':N+W+E+S,
+									'grid_sticky':N+S+E+W,
 									'grid_has_border':True}
 		self.lbl_lims_fp 		= create_widget_label(frame, lbl_lims_fp_params)
 
 		btn_sel_lims_file_params = {'widg_text':"Select LIMS File",
 									'widg_width':16,
 									'widg_command':self.lims_file_open_callback,
-									'grid_row':3,
+									'grid_row':1,
 									'grid_col':3,
 									'grid_cols':1,
 									'grid_sticky':E}
 		self.btn_sel_lims_file 	= create_widget_button(frame, btn_sel_lims_file_params)
 
 		# ---------------------------------------------------------------------
-		# Row 4 - Summary of plates text area
+		# frame row 2 - Summary of plates text area
 		# ---------------------------------------------------------------------
-		frame.grid_rowconfigure(4, weight=1)
+		frame.grid_rowconfigure(2, weight=1)
 		txt_summary_params		= {'widg_height':22,
-									'grid_row':4,
+									'grid_row':2,
 									'grid_col':0,
 									'grid_cols':4,
-									'grid_sticky':N+W+E+S,
+									'grid_sticky':N+S+E+W,
 									'grid_has_border':True}
 		self.txt_summary 		= create_widget_text(frame, txt_summary_params)
 
 		# ---------------------------------------------------------------------
-		# Row 5 - Black plates required labels
+		# frame row 3 - Black plates required labels
 		# ---------------------------------------------------------------------
-		frame.grid_rowconfigure(5, weight=1)
+		frame.grid_rowconfigure(3, weight=1)
 		lbl_blk_plts_req_params = {'widg_text':"Number of black plates needed (incl. for standards) : ", 
-									'grid_row':5,
+									'grid_row':3,
 									'grid_col':2,
 									'grid_cols':1,
 									'grid_sticky':NW+NE}
@@ -531,18 +582,18 @@ class QuantSetupGUI:
 		self.var_num_blk_plts_reqd 	= IntVar(frame)
 		self.var_num_blk_plts_reqd.set(0)
 		lbl_num_blk_plts_reqd_params = {'widg_txt_var':self.var_num_blk_plts_reqd,
-									'grid_row':5,
+									'grid_row':3,
 									'grid_col':3,
 									'grid_cols':1,
 									'grid_sticky':NW+NE}
 		self.lbl_num_blk_plts_reqd 	= create_widget_label(frame, lbl_num_blk_plts_reqd_params)
 
 		# ---------------------------------------------------------------------
-		# Row 6 - Actual black plates in system label and combobox
+		# frame row 4 - Actual black plates in system label and combobox
 		# ---------------------------------------------------------------------
-		frame.grid_rowconfigure(6, weight=1)
+		frame.grid_rowconfigure(4, weight=1)
 		lbl_num_blk_plts_deck_params = {'widg_text':"Actual number of black plates loaded in stack four : ", 
-									'grid_row':6,
+									'grid_row':4,
 									'grid_col':2,
 									'grid_cols':1,
 									'grid_sticky':NW+NE}
@@ -557,54 +608,51 @@ class QuantSetupGUI:
 									'widg_state':'readonly',
 									'widg_width':3,
 									'widg_txt_var':self.num_blk_plates_deck,
-									'grid_row':6,
+									'grid_row':4,
 									'grid_col':3,
 									'grid_cols':1,
 									'grid_sticky':NW+NE}
 
 		self.cmbbx_num_blk_plts = create_widget_combobox(frame, cmbbx_num_blk_plts_params)
 
-		# ---------------------------------------------------------------------
-		# Row 7 - Message panel
-		# ---------------------------------------------------------------------
-		frame.grid_rowconfigure(7, weight=1)
-		txt_msg_panel_params		= {'widg_height':3,
-									'grid_row':7,
-									'grid_col':0,
-									'grid_cols':4,
-									'grid_sticky':N+W+E+S,
-									'grid_has_border':True}
-		self.txt_msg_panel 		= create_widget_text(frame, txt_msg_panel_params)
+		frame.pack(fill = BOTH, expand = 1) # expand the sub-frame to fill the parent frame row
 
-		# ---------------------------------------------------------------------
-		# Row 8 - Quit and Create Access Files buttons
-		# ---------------------------------------------------------------------
-		frame.grid_rowconfigure(8, weight=1)
-		btn_quit_params 		= {'widg_text':"Quit",
-									'widg_width':12,
-									'widg_command':self.quit_button_callback,
-									'grid_row':8,
-									'grid_col':0,
-									'grid_cols':1,
-									'grid_sticky':SW}
-		self.btn_quit 			= create_widget_button(frame, btn_quit_params)
+		return frame
 
-		btn_create_files_params = {'widg_text':"Create Access Files",
-									'widg_width':16,
-									'widg_command':self.create_access_files_button_callback,
-									'widg_state':DISABLED,
-									'grid_row':8,
-									'grid_col':3,
-									'grid_cols':1,
-									'grid_sticky':SE}
-		self.btn_create_files 	= create_widget_button(frame, btn_create_files_params)
+	def create_message_frame(self, parent_frame):
+		'''Create a scrollable message frame'''
 
+		frame 						= Frame(parent_frame, borderwidth=1, height=50, bg = "black", colormap = "new")
+
+		frame.pack(fill="both", expand=True)
+		# ensure a consistent GUI size
+		frame.grid_propagate(False)
+		# implement stretchability
+		frame.grid_rowconfigure(0, weight=1)
+		frame.grid_columnconfigure(0, weight=1)
+
+		# create a Text widget
+		self.txt_msg_panel 			= Text(frame)
+		self.txt_msg_panel    		= Text(frame,
+											wrap 			= WORD,
+											height   		= 3,
+											bg 				= colour_white,
+											fg 				= colour_black,
+											font 			= font_arial_normal)
+		self.txt_msg_panel.grid(row=0, column=0, sticky="nsew")
+
+		# create a Scrollbar and associate it with the text widget
+		scrollb = Scrollbar(frame, command=self.txt_msg_panel.yview)
+		scrollb.grid(row=0, column=1, sticky='nsew')
+		self.txt_msg_panel['yscrollcommand'] = scrollb.set
+
+		return frame
 
 	def lims_file_open_callback(self):
 		'''Triggered when user has pressed the Select LIMS file button'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# clear error msg line in screen, summary text and disable create files button
 		self.clear_screen()
@@ -632,7 +680,7 @@ class QuantSetupGUI:
 			if(self.validate_data_lims_src_plt_grp() == True):
 
 				# at this point we need to know which standards we are using e.g. SS2 and load the relevant file
-				parse_quantification_standards_config_file(self.data_summary['standards_type'])
+				parse_quant_standards_config_file(self.data_summary['standards_type'])
 
 				# TODO: need validation check to make sure standards layout can handle number of plates in this run
 				# self.settings[Quantification][quant_max_source_plates_allowed]
@@ -658,7 +706,7 @@ class QuantSetupGUI:
 		'''Triggered when user has pressed the Check File button'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# validate that there are enough black plates in the stack
 		if(self.validate_number_of_black_plates_in_stack()):
@@ -670,7 +718,7 @@ class QuantSetupGUI:
 
 		# create expt dir using lims_plate_group_id
 		if(self.create_experiment_directory()):
-			self.display_message(False, "Created experiment directory, now generating Echo csv files, please wait...")
+			self.display_message(False, "Created experiment directory at <%s>, now generating Echo csv files, please wait..." % self.expt_directory)
 		else:
 			if(args.debug == True):
 				print_debug_message("Failed to create experiment directory")
@@ -698,7 +746,8 @@ class QuantSetupGUI:
 			new_expt_filepath 			= os.path.join(self.expt_directory, lims_src_plt_grp_filename)
 
 			shutil.copyfile(self.lims_src_plt_grp_filepath, new_expt_filepath)
-			self.display_message(False, "The RunDef file should now be in the Tempo Inbox and ready to run from Tempo.\nYou can now Quit or open another LIMS file.")
+			self.display_message(False, "The RunDef file <%s> should now be in the Tempo Inbox and ready to start from Tempo.\nPlease leave this screen open because it will monitor the run." 
+										% self.rundef_expt_filename)
 		except Exception as e:
 			if(args.debug == True):
 				print_debug_message("Failed to copy LIMS file into experiment directory")
@@ -712,25 +761,25 @@ class QuantSetupGUI:
 		'''Display message on the screen'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
 			if(is_error):
 				print_debug_message("Input is Error message")
 			else:
 				print_debug_message("Input is Standard message")
 			print_debug_message("Input message: %s" % message)			
 
-		# delete current message content
-		self.txt_msg_panel.delete('1.0', END)
-
 		# set up tags
 		self.txt_msg_panel.tag_configure('msg_error', 	 font=font_arial_normal, foreground=colour_red)
 		self.txt_msg_panel.tag_configure('msg_standard', font=font_arial_normal, foreground=colour_green)
 
-		# display message
+		# create a timestamp
+		s_ts                              = time.strftime("%H:%M:%S  ")
+
+		# display message with timestamp prefix
 		if(is_error):
-			self.txt_msg_panel.insert('1.0', message, ('msg_error'))
+			self.txt_msg_panel.insert('1.0', s_ts + message + '\n', ('msg_error'))
 		else:
-			self.txt_msg_panel.insert('1.0', message, ('msg_standard'))
+			self.txt_msg_panel.insert('1.0', s_ts + message + '\n', ('msg_standard'))
 
 		return
 
@@ -738,7 +787,7 @@ class QuantSetupGUI:
 		'''Triggered when user has pressed the Quit button'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		if askyesno('Verify', 'Are you sure you want to Quit?'):
 			sys.exit()
@@ -749,7 +798,7 @@ class QuantSetupGUI:
 		'''Reads the data from a json file'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# read the file N.B. the with clause closes the file as soon as we are out of the with context.
 		# don't print or do anything in the with open clause as that keeps the file open longer.
@@ -775,7 +824,7 @@ class QuantSetupGUI:
 		'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# validation check: there should be certain fields in the json file
 		expected_fields = ['LIMS_PLATE_GROUP_ID', 'PLATES']
@@ -870,7 +919,7 @@ class QuantSetupGUI:
 		'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# define tags for formatting text
 		self.txt_summary.tag_configure('tag_title', font=font_arial_large_bold, foreground=colour_green, relief='raised',justify='center', underline='True')
@@ -924,17 +973,17 @@ class QuantSetupGUI:
 		'''Clears the various GUI widgets'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# clear the filepath 
 		self.lbl_lims_fp.configure(text = "")
 
 		# clear the summary text and message panel
 		self.txt_summary.delete('1.0', END)
-		self.txt_msg_panel.delete('1.0', END)
+		# self.txt_msg_panel.delete('1.0', END)
 
 		self.txt_summary.insert('1.0', "")
-		self.txt_msg_panel.insert('1.0', "")
+		# self.txt_msg_panel.insert('1.0', "")
 
 		# clear black plate reqd field and set combo back to zero
 		self.var_num_blk_plts_reqd.set(0)
@@ -949,10 +998,10 @@ class QuantSetupGUI:
 		'''Validate that the user has indicated that there are enough black plates in the stack'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# Clear the message panel
-		self.txt_msg_panel.delete('1.0', END)
+		# self.txt_msg_panel.delete('1.0', END)
 
 		num_blk_deck = self.num_blk_plates_deck.get()
 		num_blk_reqd = self.var_num_blk_plts_reqd.get()
@@ -987,7 +1036,7 @@ class QuantSetupGUI:
 		'''Create the experiment directory based on the lims plate grouping id'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		self.expt_directory = os.path.join(settings.get('Common').get('dir_expt_root'), self.data_summary['lims_plate_group_id'])
 
@@ -1015,7 +1064,7 @@ class QuantSetupGUI:
 		'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		if(not self.generate_sources_to_standards_csv_file()):
 			return False
@@ -1039,7 +1088,7 @@ class QuantSetupGUI:
 		'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		stnd_type 							= self.data_summary['standards_type']
 		
@@ -1138,7 +1187,7 @@ class QuantSetupGUI:
 		'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		stnd_type 							= self.data_summary['standards_type']
 
@@ -1226,7 +1275,7 @@ class QuantSetupGUI:
 		'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		stnd_type 							= self.data_summary['standards_type']
 
@@ -1393,19 +1442,19 @@ class QuantSetupGUI:
 		'''Generate the Tempo RunDef file for operating the Access System'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# directories and filepaths
 		try:
 			rundef_template_filepath 	= os.path.join(settings.get('Common').get('dir_rundef_templates'), settings.get('Quantification').get('quant_filename_setup_rundef_template'))
-			rundef_expt_filename 		= "dna_quantification_group_%s.rundef" % self.data_summary['lims_plate_group_id']
-			rundef_expt_filepath 		= os.path.join(self.expt_directory, rundef_expt_filename)
-			rundef_tempo_inbox_filepath = os.path.join(settings.get('Common').get('dir_tempo_inbox'), rundef_expt_filename)
+			self.rundef_expt_filename 	= "dnaq_%s.rundef" % self.data_summary['lims_plate_group_id']
+			rundef_expt_filepath 		= os.path.join(self.expt_directory, self.rundef_expt_filename)
+			rundef_tempo_inbox_filepath = os.path.join(settings.get('Common').get('dir_tempo_inbox'), self.rundef_expt_filename)
 
 			if(args.debug == True):
-				print_debug_message("rundef_template_filepath 	= %s" % rundef_template_filepath)
-				print_debug_message("rundef_expt_filename     	= %s" % rundef_expt_filename)
-				print_debug_message("rundef_expt_filepath     	= %s" % rundef_expt_filepath)
+				print_debug_message("rundef_template_filepath 		= %s" % rundef_template_filepath)
+				print_debug_message("rundef_expt_filename     		= %s" % self.rundef_expt_filename)
+				print_debug_message("rundef_expt_filepath     		= %s" % rundef_expt_filepath)
 				print_debug_message("rundef_tempo_inbox_filepath 	= %s" % rundef_tempo_inbox_filepath)
 
 			# create a dictionary of search_string : value
@@ -1462,7 +1511,7 @@ class QuantSetupGUI:
 		'''Generate the dictionary of fields to be replaced in the quantification rundef file'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantSetupGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		search_term_dict = {}
 
@@ -1988,7 +2037,7 @@ def add_widget_to_grid(widg, widg_frame, widg_params):
 # -----------------------------------------------------------------------------
 # Create GUI Screen Methods
 # -----------------------------------------------------------------------------
-def display_gui_quantsetup():
+def display_gui_quant():
 	'''Display the quantification setup GUI'''
 
 	if(args.debug == True):
@@ -1997,7 +2046,7 @@ def display_gui_quantsetup():
 	root 		= Tk()
 	root.geometry('%dx%d+%d+%d' % (settings.get('Common').get('gui_width'), settings.get('Common').get('gui_height'), settings.get('Common').get('gui_x_posn'), settings.get('Common').get('gui_y_posn')))
 	root.title("Access System Script")
-	app 		= QuantSetupGUI(root)
+	app 		= QuantificationGUI(root)
 
 	root.mainloop()
 
