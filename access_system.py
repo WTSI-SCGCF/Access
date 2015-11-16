@@ -399,7 +399,7 @@ def process_quantcalc():
 # GUI Screen Classes
 # -----------------------------------------------------------------------------
 class QuantificationGUI:
-	'''GUI class for quantification setup'''
+	'''GUI class for DNA quantification'''
 
 	# -----------------------------------------------------------------------------
 	# Variables
@@ -418,8 +418,7 @@ class QuantificationGUI:
 		setup_styles_and_themes()
 
 		# root holds the main frame which holds a number of sub-frames
-		main_frame 				= Frame(master, bg = "", colormap = "new")
-		main_frame.pack(fill = BOTH, expand = 1) # expand the main frame to fill the root window
+		main_frame 				= Frame(master, bg = "", colormap = "new")		
 
 		# give columns equal weighting
 		col_num = 0
@@ -470,9 +469,9 @@ class QuantificationGUI:
 		#  main_frame row 2 - Sub-Frame initially holding Quantification Setup
 		# ---------------------------------------------------------------------
 		main_frame.grid_rowconfigure(2, weight=1)
-		quant_setup_frame 		= self.create_quantification_setup_frame(main_frame)
-		# quant_setup_frame.pack(fill = BOTH, expand = 1) # expand the sub-frame to fill the parent frame row
-		quant_setup_frame.grid(row = 2, column = 0, rowspan = 1, columnspan = 4, sticky = N+S+E+W)
+		frame1 					= self.create_quantification_setup_frame(main_frame)
+		# frame1.pack(fill = BOTH, expand = 1) # expand the sub-frame to fill the parent frame row
+		frame1.grid(row = 2, column = 0, rowspan = 1, columnspan = 4, sticky = N+S+E+W)
 
 		# ---------------------------------------------------------------------
 		# main_frame row 3 - Message panel
@@ -482,28 +481,11 @@ class QuantificationGUI:
 		# message_frame.pack(fill = BOTH, expand = 1) # expand the sub-frame to fill the parent frame row
 		message_frame.grid(row = 3, column = 0, rowspan = 1, columnspan = 4, sticky = N+S+E+W)
 
-		# ---------------------------------------------------------------------
-		# main_frame row 4 - Quit and Create Access Files buttons
-		# ---------------------------------------------------------------------
-		main_frame.grid_rowconfigure(4, weight=1)
-		btn_quit_params 		= {'widg_text':"Quit",
-									'widg_width':12,
-									'widg_command':self.quit_button_callback,
-									'grid_row':4,
-									'grid_col':0,
-									'grid_cols':1,
-									'grid_sticky':SW}
-		self.btn_quit 			= create_widget_button(main_frame, btn_quit_params)
 
-		btn_create_files_params = {'widg_text':"Create Access Files",
-									'widg_width':16,
-									'widg_command':self.create_access_files_button_callback,
-									'widg_state':DISABLED,
-									'grid_row':4,
-									'grid_col':3,
-									'grid_cols':1,
-									'grid_sticky':SE}
-		self.btn_create_files 	= create_widget_button(main_frame, btn_create_files_params)
+		# expand the main frame to fill the root window
+		main_frame.pack(fill = BOTH, expand = 1)
+
+		return
 
 	def create_quantification_setup_frame(self, parent_frame):
 		'''Build the quantification setup frame for the main GUI'''
@@ -612,10 +594,25 @@ class QuantificationGUI:
 									'grid_col':3,
 									'grid_cols':1,
 									'grid_sticky':NW+NE}
-
 		self.cmbbx_num_blk_plts = create_widget_combobox(frame, cmbbx_num_blk_plts_params)
 
-		frame.pack(fill = BOTH, expand = 1) # expand the sub-frame to fill the parent frame row
+		# ---------------------------------------------------------------------
+		# frame row 5 - Create Files Button
+		# ---------------------------------------------------------------------
+		frame.grid_rowconfigure(5, weight=1)
+		btn_create_files_params = {'widg_text':"Create Access Files",
+							'widg_width':16,
+							'widg_command':self.create_access_files_button_callback,
+							'widg_state':DISABLED,
+							'grid_row':5,
+							'grid_col':3,
+							'grid_cols':1,
+							'grid_sticky':SE}
+		self.btn_create_files 	= create_widget_button(frame, btn_create_files_params)
+
+
+		# expand the sub-frame to fill the parent frame row
+		frame.pack(fill = BOTH, expand = 1)
 
 		return frame
 
@@ -634,16 +631,16 @@ class QuantificationGUI:
 		# create a Text widget
 		self.txt_msg_panel 			= Text(frame)
 		self.txt_msg_panel    		= Text(frame,
-											wrap 			= WORD,
-											height   		= 3,
-											bg 				= colour_white,
-											fg 				= colour_black,
-											font 			= font_arial_normal)
-		self.txt_msg_panel.grid(row=0, column=0, sticky="nsew")
+									wrap 	= WORD,
+									height 	= 3,
+									bg 		= colour_white,
+									fg 		= colour_black,
+									font 	= font_arial_normal)
+		self.txt_msg_panel.grid(row = 0, column = 0, sticky = N+S+E+W)
 
 		# create a Scrollbar and associate it with the text widget
-		scrollb = Scrollbar(frame, command=self.txt_msg_panel.yview)
-		scrollb.grid(row=0, column=1, sticky='nsew')
+		scrollb 					= Scrollbar(frame, command=self.txt_msg_panel.yview)
+		scrollb.grid(row = 0, column = 1, sticky = N+S+E+W)
 		self.txt_msg_panel['yscrollcommand'] = scrollb.set
 
 		return frame
@@ -780,17 +777,6 @@ class QuantificationGUI:
 			self.txt_msg_panel.insert('1.0', s_ts + message + '\n', ('msg_error'))
 		else:
 			self.txt_msg_panel.insert('1.0', s_ts + message + '\n', ('msg_standard'))
-
-		return
-
-	def quit_button_callback(self):
-		'''Triggered when user has pressed the Quit button'''
-
-		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
-
-		if askyesno('Verify', 'Are you sure you want to Quit?'):
-			sys.exit()
 
 		return
 
@@ -2035,8 +2021,19 @@ def add_widget_to_grid(widg, widg_frame, widg_params):
 	return
 
 # -----------------------------------------------------------------------------
-# Create GUI Screen Methods
+# GUI Screen Methods
 # -----------------------------------------------------------------------------
+def on_closing_window():
+	'''Called by a Protocol on the root window, when the user presses the window close button'''
+
+	if(args.debug == True):
+		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
+
+	if askyesno('Verify', 'Are you sure you want to Quit?'):
+		sys.exit()
+
+	return
+
 def display_gui_quant():
 	'''Display the quantification setup GUI'''
 
@@ -2048,6 +2045,7 @@ def display_gui_quant():
 	root.title("Access System Script")
 	app 		= QuantificationGUI(root)
 
+	root.protocol("WM_DELETE_WINDOW", on_closing_window)
 	root.mainloop()
 
 	return
