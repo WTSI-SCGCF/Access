@@ -181,33 +181,33 @@ def parse_access_system_config_file():
 
 	# Verify that the options imported from the file match with an expected list maintained here
 	options_list = {
-		'Version':{'version_number':'flt'},
-		'Common':{'dir_tempo_inbox':'str', 
-				'filepath_ecp_384armadillo':'str',
-				'filepath_ecp_384corningblack':'str',
-				'filepath_ecp_384dest':'str',
+		'Version':{
+				'version_number':'flt'
+		},
+		'Common':{
+				'dir_tempo_inbox':'str', 
+				'fpath_ecp_384armadillo':'str',
+				'fpath_ecp_384corningblack':'str',
+				'fpath_ecp_384dest':'str',
 				'dir_expt_root':'str',
 				'dir_rundef_templates':'str',
 				'src_plts_initial_stk_posn':'int',
 				'gui_width':'int',
 				'gui_height':'int',
 				'gui_x_posn':'int',
-				'gui_y_posn':'int'},
-		'Quantification':{'quant_max_source_plates_allowed':'int', 
-				'quant_dir_lims_file_network':'str', 
-				'quant_dir_standards':'str',
-				'quant_filename_standards_ss2':'str',
-				'quant_filename_setup_rundef_template':'str',
-				'quant_filename_sources_to_standards_csv':'str',
-				'quant_filename_sources_to_black_plts_csv':'str',
-				'quant_filename_standards_to_black_csv':'str',
-				'quant_filename_setup_log':'str',
-				'quant_cdna_min_conc':'flt',
-				'quant_cdna_max_conc':'flt',
-				'quant_cdna_min_percent_wells_ok':'flt',
-				'quant_gdna_min_conc':'flt',
-				'quant_gdna_max_conc':'flt',
-				'quant_gdna_min_percent_wells_ok':'flt'
+				'gui_y_posn':'int'
+		},
+		'Quantification':{
+				'dnaq_max_src_plates':'int', 
+				'dnaq_dir_lims_file_network':'str', 
+				'dnaq_dir_standards':'str',
+				'dnaq_fn_standards_ss2':'str',
+				'dnaq_fn_standards_rundef_template':'str',
+				'dnaq_fn_dna_sources_rundef_template':'str',
+				'dnaq_fn_sources_to_standards_csv':'str',
+				'dnaq_fn_sources_to_black_plts_csv':'str',
+				'dnaq_fn_standards_to_black_csv':'str',
+				'dnaq_fn_log':'str'
 		}
 	}
 
@@ -265,12 +265,12 @@ def parse_quant_standards_config_file(stnd_type):
 	# Read the relevant configuration file
 	standards_config_filename = ""
 	if(stnd_type == 'SS2'):
-		standards_config_filename = settings.get('Quantification').get('quant_filename_standards_ss2')
+		standards_config_filename = settings.get('Quantification').get('dnaq_fn_standards_ss2')
 
 	if(args.debug == True):
 		print_debug_message("Standards config filename : %s" % standards_config_filename)	
 
-	standards_config_filepath = os.path.join(settings.get('Quantification').get('quant_dir_standards'), standards_config_filename)
+	standards_config_filepath = os.path.join(settings.get('Quantification').get('dnaq_dir_standards'), standards_config_filename)
 
 	if(args.debug == True):
 		print_debug_message("Standards config filepath : %s" % standards_config_filepath)
@@ -655,7 +655,7 @@ class QuantificationGUI:
 		self.clear_screen()
 
 		# normpath fixes path for different OSs
-		limsdir = os.path.normpath(settings.get('Quantification').get('quant_dir_lims_file_network'))
+		limsdir = os.path.normpath(settings.get('Quantification').get('dnaq_dir_lims_file_network'))
 
 		if(args.debug == True):
 			print_debug_message("LIMS file directory: %s" % limsdir)
@@ -680,7 +680,7 @@ class QuantificationGUI:
 				parse_quant_standards_config_file(self.data_summary['standards_type'])
 
 				# TODO: need validation check to make sure standards layout can handle number of plates in this run
-				# self.settings[Quantification][quant_max_source_plates_allowed]
+				# self.settings[Quantification][dnaq_max_src_plates]
 
 				# display a summary of the data in the file (one line per plate) and ask user to confirm generation of rundef and csv files
 				self.display_summary_of_plates()
@@ -729,9 +729,9 @@ class QuantificationGUI:
 				print_debug_message("Failed to generate csv files")
 			return
 
-		# generate Access RunDef file
-		if(self.generate_rundef_file()):
-			self.display_message(False, "RunDef file created in experiment directory, now tidying up, please wait...")
+		# generate Access RunDef files
+		if(self.generate_quantification_rundef_files()):
+			self.display_message(False, "RunDef files created in experiment directory, now tidying up, please wait...")
 		else:
 			if(args.debug == True):
 				print_debug_message("Failed to generate RunDef file")
@@ -744,7 +744,7 @@ class QuantificationGUI:
 
 			shutil.copyfile(self.lims_src_plt_grp_filepath, new_expt_filepath)
 			self.display_message(False, "The RunDef file <%s> should now be in the Tempo Inbox and ready to start from Tempo.\nPlease leave this screen open because it will monitor the run." 
-										% self.rundef_expt_filename)
+										% self.dnaq_standards_rundef_expt_filename)
 		except Exception as e:
 			if(args.debug == True):
 				print_debug_message("Failed to copy LIMS file into experiment directory")
@@ -1081,7 +1081,7 @@ class QuantificationGUI:
 		# open csv file for writing, wb = write in binary format, overwrites the file if the file exists or creates a new file
 		try:
 			# csv filepath set in confguration file
-			csv_filepath_sources_to_standards 	= os.path.join(self.expt_directory, settings.get('Quantification').get('quant_filename_sources_to_standards_csv'))
+			csv_filepath_sources_to_standards 	= os.path.join(self.expt_directory, settings.get('Quantification').get('dnaq_fn_sources_to_standards_csv'))
 
 			with open(csv_filepath_sources_to_standards, 'wb') as csvfile:
 				# for csv file open in binary format.  delimiter is defaulted to comma, quote character is defaulted to doublequote, quoting defaults to quote minimal
@@ -1180,7 +1180,7 @@ class QuantificationGUI:
 		# open csv file for writing, wb = write in binary format, overwrites the file if the file exists or creates a new file
 		try:
 			# csv filepath set in confguration file
-			csv_filepath_sources_to_black_plts 	= os.path.join(self.expt_directory, settings.get('Quantification').get('quant_filename_sources_to_black_plts_csv'))
+			csv_filepath_sources_to_black_plts 	= os.path.join(self.expt_directory, settings.get('Quantification').get('dnaq_fn_sources_to_black_plts_csv'))
 
 			with open(csv_filepath_sources_to_black_plts, 'wb') as csvfile:
 				# for csv file open in binary format.  delimiter is defaulted to comma, quote character is defaulted to doublequote, quoting defaults to quote minimal
@@ -1268,7 +1268,7 @@ class QuantificationGUI:
 		# open csv file for writing, wb = write in binary format, overwrites the file if the file exists or creates a new file
 		try:
 			# csv filepath set in confguration file
-			csv_filepath_standards_to_black 	= os.path.join(self.expt_directory, settings.get('Quantification').get('quant_filename_standards_to_black_csv'))
+			csv_filepath_standards_to_black 	= os.path.join(self.expt_directory, settings.get('Quantification').get('dnaq_fn_standards_to_black_csv'))
 
 			if(args.debug == True):
 				print_debug_message("csv_filepath_standards_to_black = %s" % csv_filepath_standards_to_black)
@@ -1424,57 +1424,101 @@ class QuantificationGUI:
 
 		return True
 
-	def generate_rundef_file(self):
-		'''Generate the Tempo RunDef file for operating the Access System'''
+	def generate_quantification_rundef_files(self):
+		'''Generate the Tempo RunDef files for operating the Access System
+
+		We are creating two RunDef files here:
+		1. For Pooling the DNA sources to the Standards plate which already contains a DNA ladder, and for creating a corresponding black plate with replicated
+		DNA source pool wells and ladder wells, and reading it.
+		The results from this stage will be used to calculate the fluorescence vs concentration graph.
+		Only if this stage is successful will the second RunDef file be used.
+
+		2. For mapping each DNA source to a black plate and reading it.
+		The results from this stage will be used to quantify each DNA source plate, by normalisation against the corresponding standards plate pool well and
+		then calculation of the concentration using the fluorescence vs concentration graph.
+		'''
 
 		if(args.debug == True):
 			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
 
-		# directories and filepaths
+		# set up the filepaths and generate the rundef dictionary
 		try:
-			rundef_template_filepath 	= os.path.join(settings.get('Common').get('dir_rundef_templates'), settings.get('Quantification').get('quant_filename_setup_rundef_template'))
-			self.rundef_expt_filename 	= "dnaq_%s.rundef" % self.data_summary['lims_plate_group_id']
-			rundef_expt_filepath 		= os.path.join(self.expt_directory, self.rundef_expt_filename)
-			rundef_tempo_inbox_filepath = os.path.join(settings.get('Common').get('dir_tempo_inbox'), self.rundef_expt_filename)
+			rundef_template_dir 						= os.path.join(settings.get('Common').get('dir_rundef_templates'))
+
+			rundef_1_template_filename 					= settings.get('Quantification').get('dnaq_fn_standards_rundef_template')
+			rundef_2_template_filename 					= settings.get('Quantification').get('dnaq_fn_dna_sources_rundef_template')
+
+			rundef_1_template_filepath 					= os.path.join(rundef_template_dir, rundef_1_template_filename)
+			rundef_2_template_filepath 					= os.path.join(rundef_template_dir, rundef_2_template_filename)
+			
+			self.dnaq_standards_rundef_expt_filename 	= "dnaq_standards_%s.rundef" % self.data_summary['lims_plate_group_id']
+			self.dnaq_dna_srcs_rundef_expt_filename 	= "dnaq_dna_srcs_%s.rundef" % self.data_summary['lims_plate_group_id']
+
+			rundef_1_expt_filepath 						= os.path.join(self.expt_directory, self.dnaq_standards_rundef_expt_filename)
+			rundef_2_expt_filepath 						= os.path.join(self.expt_directory, self.dnaq_dna_srcs_rundef_expt_filename)
+
+			rundef_1_tempo_inbox_filepath 				= os.path.join(settings.get('Common').get('dir_tempo_inbox'), self.dnaq_standards_rundef_expt_filename)
 
 			if(args.debug == True):
-				print_debug_message("rundef_template_filepath 		= %s" % rundef_template_filepath)
-				print_debug_message("rundef_expt_filename     		= %s" % self.rundef_expt_filename)
-				print_debug_message("rundef_expt_filepath     		= %s" % rundef_expt_filepath)
-				print_debug_message("rundef_tempo_inbox_filepath 	= %s" % rundef_tempo_inbox_filepath)
+				print_debug_message("rundef_1_template_filepath 			= %s" % rundef_1_template_filepath)
+				print_debug_message("rundef_2_template_filepath 			= %s" % rundef_2_template_filepath)
+
+				print_debug_message("dnaq_standards_rundef_expt_filename    = %s" % self.dnaq_standards_rundef_expt_filename)
+				print_debug_message("dnaq_dna_srcs_rundef_expt_filename    	= %s" % self.dnaq_dna_srcs_rundef_expt_filename)
+
+				print_debug_message("rundef_1_expt_filepath     			= %s" % rundef_1_expt_filepath)
+				print_debug_message("rundef_2_expt_filepath     			= %s" % rundef_2_expt_filepath)
+
+				print_debug_message("rundef_1_tempo_inbox_filepath 			= %s" % rundef_1_tempo_inbox_filepath)
 
 			# create a dictionary of search_string : value
-			search_term_dict 	= self.generate_rundef_search_dictionary()
-			search_list 		= search_term_dict.keys()
+			quant_rundef_dict 							= self.generate_quantification_rundef_dictionary()
 
 			if(args.debug == True):
+				print_debug_message("Rundef keys:")
+				pprint(quant_rundef_dict.keys())
 				print_debug_message("-" * 80)
-				print_debug_message("Rundef search term dictionary:")
-				pprint(search_term_dict)
-				print_debug_message("-" * 80)
-				print_debug_message("Rundef search term list:")
-				pprint(search_list)
-				print_debug_message("-" * 80)
-
+			
 		except Exception as e:
-			self.display_message(True, "ERROR: Exception creating the RunDef file when determining directory paths.\nError Message: <%s>" % str(e))
+			self.display_message(True, "ERROR: Exception when determining directory paths while creating RunDef files.\nError Message: <%s>" % str(e))
 			return False
 
+		if (not self.create_rundef_file_from_template(quant_rundef_dict, rundef_1_expt_filepath, rundef_1_template_filepath)):
+			return False
+
+		if (not self.create_rundef_file_from_template(quant_rundef_dict, rundef_2_expt_filepath, rundef_2_template_filepath)):
+			return False
+
+		# copy the first RunDef file (standards plate) into the Tempo inbox directory
+		try:
+			shutil.copyfile(rundef_1_expt_filepath, rundef_1_tempo_inbox_filepath)
+		except Exception as e:
+			self.display_message(True, "ERROR: Exception copying the newly created RunDef file to the experiment directory.\nError Message: <%s>" % str(e))
+			return False
+
+		return True
+
+	def create_rundef_file_from_template(self, quant_rundef_dict, expt_filepath, template_filepath):
+		'''Create the RunDef file from its template using the values in the dynamically-created dictionary'''
+
 		# open the template rundef file, and the new output rubdef file, and copy lines across
-		# replacing any terms matching those in the search_term_dict
+		# replacing any terms matching those in the quant_rundef_dict
 		# N.B. the rundef file is a UTF-8 encoded XML file, so each line needs to be decoded then re-encoded to write
+
+		quant_rundef_dict_keys 						= quant_rundef_dict.keys()
+
 		i_line_num = 1
 		try:
-			with open(rundef_expt_filepath, 'w') as file_out:
-				with open(rundef_template_filepath, 'r') as file_in:
+			with open(expt_filepath, 'w') as file_out:
+				with open(template_filepath, 'r') as file_in:
 					# check each line in the template
 					for line in file_in:
 						# decode the line from utf-8 so we can work with it
 						u_line = line.decode('utf8')
 						# see if the line contains ANY of the search terms
-						for search_term in search_list:
+						for dict_key in quant_rundef_dict_keys:
 							# modify the line to replace the search term with the new lines generated in the dictionary
-							u_line = u_line.replace(search_term, search_term_dict[search_term])
+							u_line = u_line.replace(dict_key, quant_rundef_dict[dict_key])
 						# encode the line to utf-8
 						line = u_line.encode('utf8')
 						# write the (potentially modified) line out to the new copy of the rundef file in the experiment directory
@@ -1484,43 +1528,36 @@ class QuantificationGUI:
 			self.display_message(True, "ERROR: Exception creating the RunDef file at line <%s>.\nError Message: <%s>" % (str(i_line_num), str(e)))
 			return False
 
-		# create a new copy of the modified file and place it in the Tempo inbox directory
-		try:
-			shutil.copyfile(rundef_expt_filepath, rundef_tempo_inbox_filepath)
-		except Exception as e:
-			self.display_message(True, "ERROR: Exception copying the newly created RunDef file to the experiment directory.\nError Message: <%s>" % str(e))
-			return False
-
 		return True
 
-	def generate_rundef_search_dictionary(self):
+	def generate_quantification_rundef_dictionary(self):
 		'''Generate the dictionary of fields to be replaced in the quantification rundef file'''
 
 		if(args.debug == True):
 			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
 
-		search_term_dict = {}
+		quant_rundef_dict = {}
 
 		# reference the LIMS plate group id
-		search_term_dict['SSS_RUNSET_REFERENCE_ID_SSS'] 					= self.data_summary['lims_plate_group_id']
+		quant_rundef_dict['SSS_RUNSET_REFERENCE_ID_SSS'] 					= self.data_summary['lims_plate_group_id']
 
 		# experiment directory root
-		search_term_dict['SSS_EXPT_ROOT_DIR_SSS'] 							= self.expt_directory
+		quant_rundef_dict['SSS_EXPT_ROOT_DIR_SSS'] 							= self.expt_directory
 
 		# ecp filepath for 384dest type plates
-		search_term_dict['SSS_CHERRY_PICK_384DEST_ECP_FP_SSS'] 				= settings.get('Common').get('filepath_ecp_384dest')
+		quant_rundef_dict['SSS_CHERRY_PICK_384DEST_ECP_FP_SSS'] 			= settings.get('Common').get('fpath_ecp_384dest')
 
 		# ecp filepath for corning black type plates
-		search_term_dict['SSS_CHERRY_PICK_CORNINGBLACK_ECP_FP_SSS'] 		= settings.get('Common').get('filepath_ecp_384corningblack')
+		quant_rundef_dict['SSS_CHERRY_PICK_CORNINGBLACK_ECP_FP_SSS'] 		= settings.get('Common').get('fpath_ecp_384corningblack')
 
 		# csv filepath for sources being pooled into the standards plate
-		search_term_dict['SSS_SOURCES_POOL_TO_STANDARDS_CSV_FP_SSS'] 		= os.path.join(self.expt_directory, settings.get('Quantification').get('quant_filename_sources_to_standards_csv'))
+		quant_rundef_dict['SSS_SOURCES_POOL_TO_STANDARDS_CSV_FP_SSS'] 		= os.path.join(self.expt_directory, settings.get('Quantification').get('dnaq_fn_sources_to_standards_csv'))
 
 		# csv filepath for sources to corning black plates
-		search_term_dict['SSS_SOURCES_TO_CORNINGBLACK_CSV_FP_SSS'] 			= os.path.join(self.expt_directory, settings.get('Quantification').get('quant_filename_sources_to_black_plts_csv'))
+		quant_rundef_dict['SSS_SOURCES_TO_CORNINGBLACK_CSV_FP_SSS'] 		= os.path.join(self.expt_directory, settings.get('Quantification').get('dnaq_fn_sources_to_black_plts_csv'))
 
 		# csv filepath for standards plate to corning black plate
-		search_term_dict['SSS_STANDARDS_TO_CORNINGBLACK_CSV_FP_SSS'] 		= os.path.join(self.expt_directory, settings.get('Quantification').get('quant_filename_standards_to_black_csv'))
+		quant_rundef_dict['SSS_STANDARDS_TO_CORNINGBLACK_CSV_FP_SSS'] 		= os.path.join(self.expt_directory, settings.get('Quantification').get('dnaq_fn_standards_to_black_csv'))
 
 		i_srcs_init_stk_posn 				= settings.get('Common').get('src_plts_initial_stk_posn') # from main config
 		stnd_type 							= self.data_summary['standards_type']
@@ -1582,7 +1619,7 @@ class QuantificationGUI:
 			i_src_stk_posn 					+= 1 # increment stack position
 			i_src_idx 						+= 1 # increment source plate index
 
-		search_term_dict['SSS_POOLING_PLATEMAP_ROWS_SSS'] 					= s_pooling_platemap_rows.encode('utf-8')
+		quant_rundef_dict['SSS_POOLING_PLATEMAP_ROWS_SSS'] 					= s_pooling_platemap_rows.encode('utf-8')
 
 		# ---------------------------------------------------------------------
 		# Sources to Black plates
@@ -1631,7 +1668,7 @@ class QuantificationGUI:
 			i_dest_idx 						+= 1 # increment destination plate index
 			i_dest_plt_stk_posn 			-= 1 # decrement destination plate stack position
 
-		search_term_dict['SSS_SOURCES_PLATEMAP_ROWS_SSS'] 					= s_src_to_blks_rows.encode('utf-8')
+		quant_rundef_dict['SSS_SOURCES_PLATEMAP_ROWS_SSS'] 					= s_src_to_blks_rows.encode('utf-8')
 
   		# TODO: What does the DataFileName here do?! Can we set this to fix the BMG read filepath?:
 		# <PHERAstar_Read_Plate>
@@ -1674,7 +1711,7 @@ class QuantificationGUI:
 												'PostRunActionSetName="Destination" StorageDeviceSetName="" EchoTemplate="DNAQ_black_%s" />\n'
 												% (s_blk_plt_num, s_blk_plt_stk_posn, s_blk_plt_num))
 
-		search_term_dict['SSS_STANDARDS_PLATEMAP_ROWS_SSS'] 				= s_stnd_to_blk_rows.encode('utf-8')
+		quant_rundef_dict['SSS_STANDARDS_PLATEMAP_ROWS_SSS'] 				= s_stnd_to_blk_rows.encode('utf-8')
 
 
 		# ---------------------------------------------------------------------
@@ -1691,7 +1728,7 @@ class QuantificationGUI:
 		s_plate_storage_std_row  			= 	(u'1844,0,DNAQ_standards,,384PP_Dest,Destination,,False,Unknown,deck://Deck/1/%s/,deck://Deck/1/%s/,deck://Deck/1/%s/,,0,,Unknown,,\n'
 												% (s_stnd_plt_stk_posn, s_stnd_plt_stk_posn, s_stnd_plt_stk_posn))
 
-		search_term_dict['SSS_PLATE_STORAGE_STD_PLATE_SSS'] 					= s_plate_storage_std_row.encode('utf-8')
+		quant_rundef_dict['SSS_PLATE_STORAGE_STD_PLATE_SSS'] 					= s_plate_storage_std_row.encode('utf-8')
 
 		if(args.debug == True):
 			print_debug_message("Setting up the plate storage source plate rows")
@@ -1718,7 +1755,7 @@ class QuantificationGUI:
 			i_src_idx 						+= 1 # increment source plate index
 			i_plate_id 						+= 1 # increment source plate id
 
-		search_term_dict['SSS_PLATE_STORAGE_SRC_PLATES_SSS'] 					= s_plate_storage_src_rows.encode('utf-8')
+		quant_rundef_dict['SSS_PLATE_STORAGE_SRC_PLATES_SSS'] 					= s_plate_storage_src_rows.encode('utf-8')
 
 		if(args.debug == True):
 			print_debug_message("Setting up the plate storage destination plate rows")
@@ -1744,9 +1781,15 @@ class QuantificationGUI:
 			i_plate_id 						-= 1 # decrement source plate id
 			i_dest_plt_echo_id_idx 			-= 1 # decrement destination echo id
 
-		search_term_dict['SSS_PLATE_STORAGE_DEST_PLATES_SSS'] 					= s_plate_storage_dest_rows.encode('utf-8')
+		quant_rundef_dict['SSS_PLATE_STORAGE_DEST_PLATES_SSS'] 					= s_plate_storage_dest_rows.encode('utf-8')
 
-		return search_term_dict
+		if(args.debug == True):
+			print_debug_message("-" * 80)
+			print_debug_message("Rundef dictionary:")
+			pprint(quant_rundef_dict)
+			print_debug_message("-" * 80)
+
+		return quant_rundef_dict
 
 # -----------------------------------------------------------------------------
 # Utility Methods
@@ -1761,7 +1804,7 @@ def check_and_create_directory(directory):
 		print_debug_message("Attempting to create directory = %s" % directory)
 
 	# check if the directory exists and create it if not
-	if not os.path.exists(directory):
+	if(not os.path.exists(directory)):
 		os.makedirs(directory)
 
 	return
@@ -1835,7 +1878,7 @@ def regex_replace_field_in_xml(xml_string, re_string, replacement_string):
 def append_to_log(log_filepath, message):
 	'''Append a message line to a specified log file'''
 	
-	# quant_filename_setup_log
+	# dnaq_fn_log
 
 	return
 
