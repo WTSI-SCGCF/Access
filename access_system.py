@@ -16,10 +16,18 @@ Initial version 								     Andrew Sparkes    Oct 2015
 Modes
 
 -------------------------------------------------------------------------------
-quant - Quantification set up process
+quant - DNA Quantification
 -------------------------------------------------------------------------------
-GUI-based mode to handle the creation of the rundef and echo csv files required 
-for the quantification process.
+GUI-based mode used to run DNA quantification on the Labcyte Access System.
+
+Functionality:
+- to handle the creation of the rundef and echo csv files required 
+for the DNA quantification process
+
+- to monitor the Access system Tempo output during operation
+
+- to calculate the sample concentrations in each DNA plate and determine which
+samples and plates are capable of being normalised for Library preparation.
 
 Inputs:
 
@@ -28,39 +36,32 @@ Inputs:
    the following for each plate: barcode, sample type, concentration thresholds,
    and layout (location of Samples and relevant control wells).
 
-2. Standards file(s) that hold the layout of the relevant standards plate (which 
+2. Script configuration file that holds filenames and paths and other common
+   parameters.
+
+3. Standards file(s) that hold the layout of the relevant standards plate (which 
    file depends on the source plate sample type e.g. cDNA, gDNA etc.)
 
-3. Library Prep Parameters file(s) that hold the parameters for the varying types
+4. Library Prep Parameters file(s) that hold the parameters for the varying types
    of library preparation (which file depends on the source plate library prep 
    parameters type e.g. ??) 
 
-4. Template RunDef file into which to insert run-specific parameters, some of
-   which depend upon the numbers of plates.
+5. Template RunDef files with placeholder variables into which are inserted 
+   dynamically generated plate details.
 
 Outputs:
 
-1. Quantification RunDef file for the Labcyte Tempo software.
+1. Quantification RunDef files for the Labcyte Tempo software on the Access system.
 
-2. Echo transfer csv files specific to source DNA plates and standards plate.
+2. Dynamically generated Echo transfer csv files specific to the plates and their
+   sample locations from the LIMS.
 
-3. Experiment run log to detail what was done.
+3. An experiment run log to detail what was done.
 
 4. Input LIMS file moved to experiment run directory to record what was 
    requested.
 
--------------------------------------------------------------------------------
-quantcalc - Quantification calculations
--------------------------------------------------------------------------------
-GUI-based mode to handle the calculation of quantification results from the BMG
-files.
-[Auto-timeout feature so run automatically continues?]
-
-Inputs:
-
-Outputs:
-
-===============================================================================
+5. Copies of the created RunDef files in the experiment run directory.
 
 
 TODO:
@@ -68,24 +69,33 @@ TODO:
   this should log key information only, e.g. user choices, refs to files and where. 
   they have been written. Timestamp per entry row.
 
-* can we replace the text file message in "Your plates are quantified.txt" with something else?
+* add monitoring of Tempo output to determine when runs are complete and whether they have
+  been successful.
 
 * add a barcode for the standards plate to the JSON file and read it in this script,
-setting it in the standards rows in the RunDef file. The standards plate may be pre-made and
-recorded in the LIMS? How does this gel with the idea of having a config file for the standards
-plate on the Access system and reading that into this script? How will they stay in sync?
+  setting it in the standards rows in the RunDef file. The standards plate may be pre-made and
+  recorded in the LIMS? How does this gel with the idea of having a config file for the standards
+  plate on the Access system and reading that into this script? How will they stay in sync?
+
+* generation of a PlatR file for creation of the standards plate
+
+* order the plates summary list into the order they will be in for stack 1
+	7 SRC 3
+	6 SRC 2
+	5 SRC 1
 
 '''
 
-import argparse 	# to parse command line arguments
-import sys 			# for sys.exit
-import os 			# for file directory selection
-import json 		# for reading/writing json files
-import csv 			# for reading/writing csv files
-import inspect 		# for getting method name
-import re 			# for regex expressions
-import shutil 		# for file copying
-import time 		# for timestamps
+import argparse 				# to parse command line arguments
+import sys 						# for sys.exit
+import os 						# for file directory selection
+import json 					# for reading/writing json files
+import csv 						# for reading/writing csv files
+import inspect 					# for getting method name
+import re 						# for regex expressions
+import shutil 					# for file copying
+import time 					# for timestamps
+import xml.etree.ElementTree 	# for parsing xnl
 
 from configobj 		import ConfigObj, ConfigObjError 	# for reading config files
 from Tkinter        import * 							# for the GUI interfaces
@@ -100,7 +110,8 @@ from pprint import pprint # for pretty printing e.g. lists and dictionaries
 # -----------------------------------------------------------------------------
 script_version 				= "1.0"
 
-config_filepath 			= '../Access_Configs/config/access_system.cfg' # configuration filename
+# configuration filepath is relative to the location of this script
+config_filepath 			= '../Access_Configs/config/access_system.cfg' 
 valid_modes     			= ['quant'] # valid program modes
 args     					= {} # stores parsed command line arguments
 settings 					= {} # stores parsed configuration settings
@@ -185,11 +196,15 @@ def parse_access_system_config_file():
 				'version_number':'flt'
 		},
 		'Common':{
-				'dir_tempo_inbox':'str', 
+				'dir_tempo_rundef_inbox':'str',
+				'dir_tempo_rundef_outbox':'str',
+				'dir_tempo_rundef_error':'str',
 				'fpath_ecp_384armadillo':'str',
 				'fpath_ecp_384corningblack':'str',
 				'fpath_ecp_384dest':'str',
 				'dir_expt_root':'str',
+				'dir_expt_processed':'str',
+				'dir_expt_error':'str',
 				'dir_rundef_templates':'str',
 				'src_plts_initial_stk_posn':'int',
 				'gui_width':'int',
@@ -362,16 +377,16 @@ def parse_quant_standards_config_file(stnd_type):
 
 	return
 
-def parse_library_prep_config_file():
-	'''Parse the settings from the library preparation configuration file.
+# def parse_library_prep_config_file():
+# 	'''Parse the settings from the library preparation configuration file.
 
 
-	'''
+# 	'''
 
-	if(args.debug == True):
-		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
+# 	if(args.debug == True):
+# 		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
 
-	return
+# 	return
 
 # -----------------------------------------------------------------------------
 # Processing Methods
@@ -384,14 +399,6 @@ def process_quant():
 
 	# build the user interface to ask the user to the select files required 
 	display_gui_quant()
-
-	return
-
-def process_quantcalc():
-	'''Entry method for processing the quantcalc mode'''
-
-	if(args.debug == True):
-		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
 
 	return
 
@@ -413,6 +420,8 @@ class QuantificationGUI:
 
 		if(args.debug == True):
 			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+
+		self.root = master
 
 		# setup any common styles and themes for the screens
 		setup_styles_and_themes()
@@ -619,7 +628,7 @@ class QuantificationGUI:
 	def create_message_frame(self, parent_frame):
 		'''Create a scrollable message frame'''
 
-		frame 						= Frame(parent_frame, borderwidth=1, height=50, bg = "black", colormap = "new")
+		frame 						= Frame(parent_frame, borderwidth=1, height=70, bg = "black", colormap = "new")
 
 		frame.pack(fill="both", expand=True)
 		# ensure a consistent GUI size
@@ -632,7 +641,7 @@ class QuantificationGUI:
 		self.txt_msg_panel 			= Text(frame)
 		self.txt_msg_panel    		= Text(frame,
 									wrap 	= WORD,
-									height 	= 3,
+									height 	= 4,
 									bg 		= colour_white,
 									fg 		= colour_black,
 									font 	= font_arial_normal)
@@ -713,8 +722,8 @@ class QuantificationGUI:
 				print_debug_message("Failed to validate number of black plates in stack")
 			return
 
-		# create expt dir using lims_plate_group_id
-		if(self.create_experiment_directory()):
+		# create expt dir using lims_reference_id
+		if(self.create_quantification_experiment_directory()):
 			self.display_message(False, "Created experiment directory at <%s>, now generating Echo csv files, please wait..." % self.expt_directory)
 		else:
 			if(args.debug == True):
@@ -722,7 +731,7 @@ class QuantificationGUI:
 			return
 
 		# generate Echo csvs in expt dir
-		if(self.generate_csv_files()):
+		if(self.generate_quantification_echo_files()):
 			self.display_message(False, "ECHO csv files created, now generating RunDef file, please wait...")
 		else:
 			if(args.debug == True):
@@ -737,7 +746,7 @@ class QuantificationGUI:
 				print_debug_message("Failed to generate RunDef file")
 			return
 
-  		# create a new copy of the LIMS file and place it in the experiment directory
+  		# copy the LIMS file and place it in the experiment directory
 		try:
 			lims_src_plt_grp_filename 	= os.path.basename(self.lims_src_plt_grp_filepath)
 			new_expt_filepath 			= os.path.join(self.expt_directory, lims_src_plt_grp_filename)
@@ -745,12 +754,208 @@ class QuantificationGUI:
 			shutil.copyfile(self.lims_src_plt_grp_filepath, new_expt_filepath)
 			self.display_message(False, "The RunDef file <%s> should now be in the Tempo Inbox and ready to start from Tempo.\nPlease leave this screen open because it will monitor the run." 
 										% self.dnaq_standards_rundef_expt_filename)
+
 		except Exception as e:
 			if(args.debug == True):
 				print_debug_message("Failed to copy LIMS file into experiment directory")
 
 			self.display_message(True, "ERROR: Exception copying the LIMS plate grouping file into the experiment directory.\nError Message: <%s>" % str(e))
-			return False
+			return
+
+		# start to monitor the run, using a recursive function
+		self.monitor_tempo_rundef_directories(settings.get('Common').get('dir_tempo_rundef_outbox'), settings.get('Common').get('dir_tempo_rundef_error'), self.dnaq_standards_rundef_expt_filename)
+
+		return
+
+	# def monitor_quantification(self):
+	# 	'''Monitor the quantification process'''
+
+		
+
+		
+
+		# Now monitor /Run1/Run_1.run for <RunState> changes. [N.B. monitoring must be platform independant, and not block Tempo from updating the file]
+		# Can maybe watch to see if the file's modified ts changes, using os.stat(filename).st_mtime
+		# Poll file every 5 secs? or more often?
+		# If the ts changes open it and check the <RunState> value:
+
+		# <PODRun id="466" referenceID="test_3_plates_step_3" sn="ACCESS-1503">
+		#      <RunState>Complete</RunState>
+
+		# * Pending – protocol execution has not yet started
+		# * Running – protocol execution is running
+		# * Paused – protocol execution has been paused indefinitely either programmatically through an event, or by the user through an API call. Must call the Continue() command to continue with the protocol execution.
+		# * Complete – protocol execution has finished, with or without errors
+		# * Aborting – protocol execution is aborting due to either user-request or due to a non-recoverable protocol or instrument error
+		# * Stopped – the protocol execution has stopped
+		# * Waiting – the protocol execution is waiting for an action to complete before continuing
+
+		# If 'Pending', 'Running', 'Paused', 'Aborting', 'Waiting' then go back to monitoring the file.
+		# Display message for each check showing current state.
+		# If 'Stopped' then tidy up expt directory, then show error message in GUI to tell user Run 1 has failed. 
+		# (Does Tempo continue to try and run Run 2 here?!)(Close the GUI here?)
+
+		# Once Run 1 <RunState> is 'Complete'
+		# 	[ Use the Run_1/Plates1.xml file to map the plate ids and names to our DNA plate barcodes ] NO: the ids will not match to those in Run 3?!
+		# 	Then start to monitor /Run2/Run_2.run for <RunState> changes
+
+		# If 'Stopped' then pop up GUI to tell user Run 2 has failed, then tidy up expt directory and close script.
+
+		# Once Run 2 <RunState> is 'Complete'
+		# 	Use the Run_2/Plates2.xml file to map the plate ids and names for our standards and black plate
+
+		# 	find and copy the BMG file matching the standards black plate id into the experiment directory as expt/%reference_id%/bmg/standards.csv
+		# 	read the BMG file as plate dictionary of well locn to fluorescence value data
+			
+		# 	find and copy the relevant Echo survey and transfer file directory into the expt/%reference_id%/echo directory as standards_survey and standards_transfer
+		# 	read the Echo transfer file for this transfer with a parser to check for transfer errors for wells (enough to know if transfer worked or not for the well)
+		# 	(what level of error handling here? display to user that key transfers failed and cannot continue, run tidy up and abort here.)
+
+		# 	read the standards type config file to know where the ladder wells are replicated to in the black plate, and what the concentrations of each are
+		# 	matching ladder well replicate locations to read fluorescence values allows normalisation and calculation and plotting of the fluorescence vs concentration graph
+		# 	hold onto the concentration equation (what form is this in?), which will be used by source plates in Run 3.
+			
+		# 	for each dna source plate:
+		# 		read the standards config file for the plate number (split from name e.g. SRC7 = 7) to get the pool replicate locations
+		# 		calculate the mean pool fluorescence value from these replicate pool values
+		# 		store this mean pool fluorescence value for this plate for use in Run 3 later
+			
+		# 	output image of standards ladder plot to expt directory and show this plot to user in a GUI for confirmation (with sound to indicate ready?)
+		# 	plot numbers output to csv file as well for use in source plate plots in Run 3
+
+		# 	if user confirms then copy the RunDef for Run 3 to the Tempo/Inbox directory.
+
+		# 	if user cancels finish at end Run 2 (Tempo runset should be already completed. what happens then? how record aborted for LIMS? How to repeat this run?)
+		# 		Tidy up:
+		# 			copy Run 1 and 2 Tempo logs directories into expt/%reference_id% directory and then rename the expt/%reference_id% directory as _aborted_%timestamp%).
+
+		# Continue to monitor the tempo outbox and error directories in the background whilst Tempo runs.
+		# Look for a RunDef in these directories matching the RunDef 3 name (will have timestamp prefix).
+
+		# If error pop up GUI to say errors, then tidy up and close. [How to continue or re-start from this?]
+
+		# If outbox file matches rundef (with prefix timestamp) then look for RunIDs in the rundef.
+		# self.dnaq_dna_srcs_rundef_expt_filename 	= "dnaq_dna_srcs_%s.rundef" % self.data_summary['lims_reference_id']
+		# Now monitor /Run1/Run_3.run for <RunState> changes.
+
+		# Once Run 3 <RunState> is 'Complete'
+		# 	Use the Run_3/Plates3.xml file to map the plate ids and names for our DNA plates and their black plates
+
+		# 	For each DNA plate:
+
+		# 		find and copy the BMG file matching the standards black plate id into the experiment directory as expt/%reference_id%/bmg/standards.csv
+		# 		read the BMG file as plate dictionary of well locn to fluorescence value data
+				
+		# 		find and copy the relevant Echo survey and transfer file directory into the expt/%reference_id%/echo directory as standards_survey and standards_transfer
+		# 		read the Echo transfer file for this transfer with a parser to check for transfer errors for wells (enough to know if transfer worked or not for the well)
+		# 		(what level of error handling here? display to user that key transfers failed and cannot continue, run tidy up and abort here.)
+
+		# 		we know which wells were transferred from the source to the pool, and to the black plate
+				
+		# 		now calculate a normalise ratio by comparing the total of the wells used in the pool with the the dna_std_pool_flu_rdg [N.B. this is only those samples that were transferred into the pool and not necessarily ALL wells]
+
+		# 		then apply the normalise ratio to each of the black well fluorescence values to get a normalised dna_well_flu_dict
+		# 		calculate the concentration by applying the normalised flu value into the conc_eqtn
+		# 		determine if the concentration value is within the specified range and 'pass' or 'fail' the value
+
+		# 		write out concentration file for the DNA plate in the expt/%reference_id%/
+		# 		create a concentration plot on top of the standards plot for the user in the expt/%reference_id%/ directory and allow for display in the GUI?
+		# 		display totals of samples vs totals in passed range. compare to thresholds to auto-determine if plate passes/fails or requires manager decision.
+				
+		# 		generate heat map for user? black = no sample, blue = to little, green = within usable range, orange = too much DNA, red = error transferring
+
+
+		# Passed plates will be going on to Run 4 for Nextera.
+
+
+		# return
+
+	def monitor_tempo_rundef_directories(self, dir_outbox, dir_error, filename):
+		'''Monitor the Tempo outbox and error directories for a processed RunDef file'''
+
+		filelist = os.listdir(dir_outbox)
+		if (not filelist == []):
+			for file in filelist:
+				if file.endswith(filename): # check filename ends with expected string					
+					self.found_rundef_file_outbox(dir_outbox, file)
+					return
+
+		filelist = os.listdir(dir_error)
+		if (not filelist == []):
+			for file in filelist:
+				if file.endswith(filename): # check filename ends with expected string					
+					self.found_rundef_file_error(dir_error, file)
+					return
+		
+		self.display_message(False, "Waiting for Tempo to process the RunDef file in the inbox...")
+
+		# after(delay_ms, callback=None, *args)
+		# e.g. after(100, myfunction, arg1, arg2, arg3, ...)
+		# N.B. to prevent infinite recursion the function has no brackets after it! arguments follow separated by brackets
+		# with brackets after the function it runs the function and then uses the result in the after, i.e. recursion happens here
+		self.root.after(2000, self.monitor_tempo_rundef_directories, dir_outbox, dir_error, filename)
+
+	def found_rundef_file_outbox(self, dir_outbox, file):
+		'''Called if the RunDef file is located in the Tempo outbox directory'''
+
+		if(args.debug == True):
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+
+		self.display_message(False, "Tempo has processed the RunDef file into the outbox dir: <%s>" % file)
+
+		# parse file to identify run ids for stages 1 and 2
+		try:
+			rundef_filepath = os.path.join(settings.get('Common').get('dir_tempo_rundef_outbox'), file)
+			e = xml.etree.ElementTree.parse(rundef_filepath).getroot()
+
+			for run_node in e.findall('Run'):
+			    print("RunID = %s" % run_node.get('RunID'))
+
+		except Exception as e:
+			if(args.debug == True):
+				print_debug_message("Failed to copy LIMS file into experiment directory")
+
+			self.display_message(True, "ERROR: Exception copying the LIMS plate grouping file into the experiment directory.\nError Message: <%s>" % str(e))
+			return
+
+		# possible delete LIMS json file from network directory at this point
+
+		# Pop up messages in the GUI so user is able to see progress.
+
+		return
+
+	def found_rundef_file_error(self, dir_error, file):
+		'''Called if the RunDef file is located in the Tempo error directory'''
+
+		if(args.debug == True):
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+
+		# If Tempo detects an error with the RunDef file it moves it to the /error directory (without renaming) and creates a .err file matching the RunDef file name
+		self.display_message(True, "Tempo detected a problem with this RunDef file. See the Tempo error directory <%s> for more information" % dir_error)
+
+		# abort the experiment and tidy up
+		# TODO: should we add the ability to retry here?
+		self.abort_experiment()
+
+		return
+
+	def abort_experiment(self):
+		'''Abort the experiment and tidy up'''
+
+		if(args.debug == True):
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+
+		# rename and move the experiment directory to the experiment error directory
+		try:
+			s_ts 							= time.strftime("%Y%m%d_%H%M%S_")
+			new_dir_name 					= s_ts + self.data_summary['lims_reference_id']
+			dest_dir  						= os.path.join(settings.get('Common').get('dir_expt_error'), new_dir_name)
+			move_and_rename_directory(self.expt_directory, dest_dir) 
+		except Exception as ex:
+			self.display_message(True, "ERROR: Exception aborting the experiment. Error Message: <%s>" % str(ex))
+			return
+
+		self.display_message(False, "Experiment aborted and directory moved to %s" % dest_dir)
 
 		return
 
@@ -822,12 +1027,12 @@ class QuantificationGUI:
 				self.display_message(True, "ERROR: Key field <%s> missing from this file. Cannot continue." % expected_field)
 				return False
 
-		self.data_summary['lims_plate_group_id'] 	= self.data_lims_src_plt_grp['LIMS_PLATE_GROUP_ID']
+		self.data_summary['lims_reference_id'] 	= self.data_lims_src_plt_grp['LIMS_PLATE_GROUP_ID']
 		self.data_summary['num_src_plts'] 			= len(self.data_lims_src_plt_grp['PLATES'])
 		self.data_summary['plates'] 				= {}
 
 		if(args.debug == True):
-			print_debug_message("Run ID           = %s" % self.data_summary['lims_plate_group_id'])
+			print_debug_message("Run ID           = %s" % self.data_summary['lims_reference_id'])
 			print_debug_message("Num plates found = %s" % self.data_summary['num_src_plts'])
 
 		# validation check: there should be at least one plate
@@ -916,7 +1121,7 @@ class QuantificationGUI:
 		self.txt_summary.insert('1.0', "Summary of File\n", ('tag_title'))
 		
 		self.txt_summary.insert(END, "LIMS plate grouping ID \t\t\t: ")
-		self.txt_summary.insert(END, "%s\n" % self.data_summary.get('lims_plate_group_id'), ('tag_hl'))
+		self.txt_summary.insert(END, "%s\n" % self.data_summary.get('lims_reference_id'), ('tag_hl'))
 		
 		self.txt_summary.insert(END, "Standards set \t\t\t: ")
 		std_version_num = str(quant_standards[self.data_summary.get('standards_type')]['Version']['version_number'])
@@ -966,10 +1171,10 @@ class QuantificationGUI:
 
 		# clear the summary text and message panel
 		self.txt_summary.delete('1.0', END)
-		# self.txt_msg_panel.delete('1.0', END)
+		self.txt_msg_panel.delete('1.0', END)
 
 		self.txt_summary.insert('1.0', "")
-		# self.txt_msg_panel.insert('1.0', "")
+		self.txt_msg_panel.insert('1.0', "")
 
 		# clear black plate reqd field and set combo back to zero
 		self.var_num_blk_plts_reqd.set(0)
@@ -1018,18 +1223,14 @@ class QuantificationGUI:
 
 		return True
 
-	def create_experiment_directory(self):
+	def create_quantification_experiment_directory(self):
 		'''Create the experiment directory based on the lims plate grouping id'''
 
 		if(args.debug == True):
 			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
 
-		self.expt_directory = os.path.join(settings.get('Common').get('dir_expt_root'), self.data_summary['lims_plate_group_id'])
-
-		if(args.debug == True):
-			print_debug_message("Attempting to create experiment dir = %s" % self.expt_directory)
-
 		try:
+			self.expt_directory = os.path.join(settings.get('Common').get('dir_expt_root'), self.data_summary['lims_reference_id'])
 			check_and_create_directory(self.expt_directory)
 		except Exception as ex:
 			self.display_message(True, "ERROR: Exception creating the experiment directory. Error Message: <%s>" % str(ex))
@@ -1040,7 +1241,7 @@ class QuantificationGUI:
 
 		return True
 
-	def generate_csv_files(self):
+	def generate_quantification_echo_files(self):
 		'''Generate the csv files required for the quantification setup
 
 		Creates the 3 csv files required for the Echo transfers:
@@ -1450,15 +1651,18 @@ class QuantificationGUI:
 
 			rundef_1_template_filepath 					= os.path.join(rundef_template_dir, rundef_1_template_filename)
 			rundef_2_template_filepath 					= os.path.join(rundef_template_dir, rundef_2_template_filename)
-			
-			self.dnaq_standards_rundef_expt_filename 	= "dnaq_standards_%s.rundef" % self.data_summary['lims_plate_group_id']
-			self.dnaq_dna_srcs_rundef_expt_filename 	= "dnaq_dna_srcs_%s.rundef" % self.data_summary['lims_plate_group_id']
-
+			print("In try 1")
+			self.dnaq_standards_rundef_expt_filename 	= "dnaq_standards_%s.rundef" % self.data_summary['lims_reference_id']
+			print("In try 2")
+			self.dnaq_dna_srcs_rundef_expt_filename 	= "dnaq_dna_srcs_%s.rundef" % self.data_summary['lims_reference_id']
+			print("In try 3")
 			rundef_1_expt_filepath 						= os.path.join(self.expt_directory, self.dnaq_standards_rundef_expt_filename)
+			print("In try 4")
 			rundef_2_expt_filepath 						= os.path.join(self.expt_directory, self.dnaq_dna_srcs_rundef_expt_filename)
+			print("In try 5")
+			rundef_1_tempo_inbox_filepath 				= os.path.join(settings.get('Common').get('dir_tempo_rundef_inbox'), self.dnaq_standards_rundef_expt_filename)
 
-			rundef_1_tempo_inbox_filepath 				= os.path.join(settings.get('Common').get('dir_tempo_inbox'), self.dnaq_standards_rundef_expt_filename)
-
+			print("In try 6")
 			if(args.debug == True):
 				print_debug_message("rundef_1_template_filepath 			= %s" % rundef_1_template_filepath)
 				print_debug_message("rundef_2_template_filepath 			= %s" % rundef_2_template_filepath)
@@ -1472,6 +1676,7 @@ class QuantificationGUI:
 				print_debug_message("rundef_1_tempo_inbox_filepath 			= %s" % rundef_1_tempo_inbox_filepath)
 
 			# create a dictionary of search_string : value
+			print("In try 7")
 			quant_rundef_dict 							= self.generate_quantification_rundef_dictionary()
 
 			if(args.debug == True):
@@ -1500,6 +1705,9 @@ class QuantificationGUI:
 
 	def create_rundef_file_from_template(self, quant_rundef_dict, expt_filepath, template_filepath):
 		'''Create the RunDef file from its template using the values in the dynamically-created dictionary'''
+
+		if(args.debug == True):
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
 
 		# open the template rundef file, and the new output rubdef file, and copy lines across
 		# replacing any terms matching those in the quant_rundef_dict
@@ -1539,7 +1747,7 @@ class QuantificationGUI:
 		quant_rundef_dict = {}
 
 		# reference the LIMS plate group id
-		quant_rundef_dict['SSS_RUNSET_REFERENCE_ID_SSS'] 					= self.data_summary['lims_plate_group_id']
+		quant_rundef_dict['SSS_RUNSET_REFERENCE_ID_SSS'] 					= self.data_summary['lims_reference_id']
 
 		# experiment directory root
 		quant_rundef_dict['SSS_EXPT_ROOT_DIR_SSS'] 							= self.expt_directory
@@ -1809,6 +2017,18 @@ def check_and_create_directory(directory):
 
 	return
 
+def move_and_rename_directory(src_dir, dest_dir):
+	'''Rename and move one directory into another'''
+
+	if(args.debug == True):
+		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message("Source dir = %s" % src_dir)
+		print_debug_message("Destination dir = %s" % dest_dir)
+
+	shutil.move(src_dir, dest_dir)
+
+	return
+
 def print_debug_message(message):
 	'''Print a debug message'''
 
@@ -1853,27 +2073,27 @@ def read_configuration_file(filepath):
 
 	return config
 
-def regex_replace_field_in_xml(xml_string, re_string, replacement_string):
-	'''Use a Regular Expression to replace one value in an XML string with another'''
+# def regex_replace_field_in_xml(xml_string, re_string, replacement_string):
+# 	'''Use a Regular Expression to replace one value in an XML string with another'''
 
-	if(args.debug == True):
-		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
-		print_debug_message("XML string: %s" % xml_string)
-		print_debug_message("RegEx string: %s" % re_string)
-		print_debug_message("Replacement string: %s" % replacement_string)
+# 	if(args.debug == True):
+# 		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
+# 		print_debug_message("XML string: %s" % xml_string)
+# 		print_debug_message("RegEx string: %s" % re_string)
+# 		print_debug_message("Replacement string: %s" % replacement_string)
 
 
-	# Substitute in a string to replace the regex string currently there
-	# substitutions		= {re_string: replacement_string, ...}
-	substitutions		= {re_string: replacement_string}
-	pattern 			= re.compile(r'%([^%]+)%')
-	xml_string_modified = re.sub(pattern, lambda m: substitutions[m.group(1)], xml_string)
+# 	# Substitute in a string to replace the regex string currently there
+# 	# substitutions		= {re_string: replacement_string, ...}
+# 	substitutions		= {re_string: replacement_string}
+# 	pattern 			= re.compile(r'%([^%]+)%')
+# 	xml_string_modified = re.sub(pattern, lambda m: substitutions[m.group(1)], xml_string)
 
-	if(args.debug == True):
-		print_debug_message("Modified XML: %s" % xml_string_modified)
+# 	if(args.debug == True):
+# 		print_debug_message("Modified XML: %s" % xml_string_modified)
 
-	# return modified XML string
-	return xml_string_modified
+# 	# return modified XML string
+# 	return xml_string_modified
 
 def append_to_log(log_filepath, message):
 	'''Append a message line to a specified log file'''
@@ -2084,7 +2304,10 @@ def display_gui_quant():
 		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
 
 	root 		= Tk()
-	root.geometry('%dx%d+%d+%d' % (settings.get('Common').get('gui_width'), settings.get('Common').get('gui_height'), settings.get('Common').get('gui_x_posn'), settings.get('Common').get('gui_y_posn')))
+	root.geometry('%dx%d+%d+%d' % (	settings.get('Common').get('gui_width'),
+									settings.get('Common').get('gui_height'), 
+									settings.get('Common').get('gui_x_posn'), 
+									settings.get('Common').get('gui_y_posn')))
 	root.title("Access System Script")
 	app 		= QuantificationGUI(root)
 
