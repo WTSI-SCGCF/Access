@@ -504,6 +504,9 @@ class QuantificationGUI:
 		# expand the main frame to fill the root window
 		main_frame.pack(fill = BOTH, expand = 1)
 
+		# check for a single file in the lims network directory, and open it by default if only one
+		self.check_for_single_lims_file()
+
 		return
 
 	def create_quantification_setup_frame(self, parent_frame):
@@ -674,13 +677,18 @@ class QuantificationGUI:
 		self.clear_screen()
 
 		# normpath fixes path for different OSs
-		limsdir = os.path.normpath(settings.get('Quantification').get('dnaq_dir_lims_file_network'))
+		try:
+			limsdir = os.path.normpath(settings.get('Quantification').get('dnaq_dir_lims_file_network'))
 
-		if(args.debug == True):
-			print_debug_message("LIMS file directory: %s" % limsdir)
+			if(args.debug == True):
+				print_debug_message("LIMS file directory: %s" % limsdir)
 
-		# open file dialog and save selection N.B. if path not recognised it opens anyway
-		self.lims_src_plt_grp_filepath = askopenfilename(title  = "Select LIMS plate grouping file", initialdir = limsdir)
+			# open file dialog and save selection N.B. if path not recognised it opens anyway
+			self.lims_src_plt_grp_filepath = askopenfilename(title  = "Select LIMS plate grouping file", initialdir = limsdir)
+
+		except Exception as e:
+			self.display_message(True, "ERROR: Exception when attempting to open the network directory for the LIMS file.\nError Message: <%s>" % str(e))
+			return False
 
 		# update the lable to display the filepath
 		self.lbl_lims_fp.configure(text = self.lims_src_plt_grp_filepath)
@@ -689,32 +697,100 @@ class QuantificationGUI:
 			if(args.debug == True):
 				print_debug_message("File chosen: %s" % self.lims_src_plt_grp_filepath)
 
-			# read file into memory
-			self.read_lims_plate_grouping_json_file()
+			# read LIMS file into memory
+			self.read_Lims_file_and_display_summary()
 
-			# validate data and create summary data
-			if(self.validate_data_lims_src_plt_grp() == True):
-
-				# at this point we need to know which standards we are using e.g. SS2 and load the relevant file
-				parse_quant_standards_config_file(self.data_summary['standards_type'])
-
-				# TODO: need validation check to make sure standards layout can handle number of plates in this run
-				# self.settings[Quantification][dnaq_max_src_plates]
-
-				# display a summary of the data in the file (one line per plate) and ask user to confirm generation of rundef and csv files
-				self.display_summary_of_plates()
-
-				# TODO: we should also be able to calculate and summarise amount of reagents reqd
-				# maybe have links to display what the standards plate looks like, incl where pools will go
-
-				# Enable the Create Files Button
-				self.btn_create_files.config(state = NORMAL)
 		else:
 			if(args.debug == True):
 				print_debug_message("No file was selected!")
 
 			# red error msg line in screen
 			self.display_message(True, "No file was selected, please try again.")		
+
+		return
+
+	def read_Lims_file_and_display_summary(self):
+		'''Reads the LIMS plate file into memory and displays the summary to the user'''
+
+		if(args.debug == True):
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+
+		# read LIMS file into memory
+		self.read_lims_plate_grouping_json_file()
+
+		# validate data and create summary data
+		if(self.validate_data_lims_src_plt_grp() == True):
+
+			# at this point we need to know which standards we are using e.g. SS2 and load the relevant file
+			parse_quant_standards_config_file(self.data_summary['standards_type'])
+
+			# TODO: need validation check to make sure standards layout can handle number of plates in this run
+			# self.settings[Quantification][dnaq_max_src_plates]
+
+			# display a summary of the data in the file (one line per plate) and ask user to confirm generation of rundef and csv files
+			self.display_summary_of_plates()
+
+			# TODO: we should also be able to calculate and summarise amount of reagents reqd
+			# maybe have links to display what the standards plate looks like, incl where pools will go
+
+			# Enable the Create Files Button
+			self.btn_create_files.config(state = NORMAL)
+
+		return
+
+	def check_for_single_lims_file(self):
+		'''Checks the network directory for the LIMS plate file, and loads the file if it finds only one'''
+
+		if(args.debug == True):
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+
+		try:
+			# lims file network directory
+			limsdir = os.path.normpath(settings.get('Quantification').get('dnaq_dir_lims_file_network'))
+
+			if(args.debug == True):
+				print_debug_message("LIMS file directory: %s" % limsdir)
+
+			i_count_lims_files 		= 0
+			s_filename 				= None
+
+			# check directory exists
+			if(os.path.exists(limsdir)):
+
+				# get list of files in directory
+				filelist 				= os.listdir(limsdir)
+				
+				# check list is not empty
+				if(not filelist == []):
+					
+					# loop through files
+					for file_name in filelist:
+
+						# check file is a json filetype
+						if(file_name.endswith('.json')):
+							i_count_lims_files 	+= 1
+							s_filename 			= file_name
+
+			# check whether we only found one lims file, then load it
+			if((i_count_lims_files == 1) and (not s_filename == None)):
+
+				if(os.path.isfile(os.path.join(limsdir, s_filename))):
+
+					# create filepath
+					self.lims_src_plt_grp_filepath = os.path.join(limsdir, s_filename)
+
+					if(args.debug == True):
+						print_debug_message("A single LIMS file was found = <%s>" % self.lims_src_plt_grp_filepath)
+
+					# update the lable to display the filepath
+					self.lbl_lims_fp.configure(text = self.lims_src_plt_grp_filepath)
+
+					# open the file and display the summary
+					self.read_Lims_file_and_display_summary()
+
+		except Exception as e:
+			self.display_message(True, "ERROR: Exception checking for lims plate layout files in the network directory.\nError Message: <%s>" % str(e))
+			return
 
 		return
 
@@ -764,7 +840,6 @@ class QuantificationGUI:
 			shutil.copyfile(self.lims_src_plt_grp_filepath, new_expt_filepath)
 			self.display_message(False, "The RunDef file <%s> should now be in the Tempo Inbox and ready to start from Tempo.\nPlease leave this screen open because it will monitor the run." 
 										% self.dnaq_standards_rundef_expt_filename)
-
 		except Exception as e:
 			self.display_message(True, "ERROR: Exception copying the LIMS plate grouping file into the experiment directory.\nError Message: <%s>" % str(e))
 			return
@@ -1190,9 +1265,10 @@ class QuantificationGUI:
 
 		if(args.debug == True):
 			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("LIMS filepath = <%s>" % self.lims_src_plt_grp_filepath)
 
 		# read the file N.B. the with clause closes the file as soon as we are out of the with context.
-		# don't print or do anything in the with open clause as that keeps the file open longer.
+		# don't print or do anything in the with open clause as that keeps the file open longer
 		with open(self.lims_src_plt_grp_filepath) as data_file:    
 			self.data_lims_src_plt_grp = json.load(data_file)
 		
@@ -1228,8 +1304,8 @@ class QuantificationGUI:
 				return False
 
 		self.data_summary['lims_reference_id'] 	= self.data_lims_src_plt_grp['LIMS_PLATE_GROUP_ID']
-		self.data_summary['num_src_plts'] 			= len(self.data_lims_src_plt_grp['PLATES'])
-		self.data_summary['plates'] 				= {}
+		self.data_summary['num_src_plts'] 		= len(self.data_lims_src_plt_grp['PLATES'])
+		self.data_summary['plts_dict'] 			= {}
 
 		if(args.debug == True):
 			print_debug_message("Run ID           = %s" % self.data_summary['lims_reference_id'])
@@ -1252,10 +1328,10 @@ class QuantificationGUI:
 			s_plt_idx 					= str(plate_index)
 			
 			# store plate summary details
-			self.data_summary['plates'][s_plt_idx] 							= {}
-			self.data_summary['plates'][s_plt_idx]['barcode'] 				= self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['BARCODE']
-			self.data_summary['plates'][s_plt_idx]['library_prep_params'] 	= self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['LIBRARY_PREP_PARAMS']
-			self.data_summary['plates'][s_plt_idx]['standards_params'] 		= self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['STANDARDS_PARAMS']
+			self.data_summary['plts_dict'][s_plt_idx] 							= {}
+			self.data_summary['plts_dict'][s_plt_idx]['barcode'] 				= self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['BARCODE']
+			self.data_summary['plts_dict'][s_plt_idx]['library_prep_params'] 	= self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['LIBRARY_PREP_PARAMS']
+			self.data_summary['plts_dict'][s_plt_idx]['standards_params'] 		= self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['STANDARDS_PARAMS']
 
 			if self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['STANDARDS_PARAMS'] not in valid_quant_standards:
 				self.display_message(True, "ERROR: plate with barcode <%s> has a standards type of <%s> which is not currently supported. Cannot continue." % (self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['BARCODE'], self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['STANDARDS_PARAMS']))
@@ -1283,8 +1359,8 @@ class QuantificationGUI:
 
 				well_index 				+= 1
 
-			self.data_summary['plates'][s_plt_idx]['count_sample_wells'] 	= count_sample_wells
-			self.data_summary['plates'][s_plt_idx]['count_control_wells'] 	= count_control_wells
+			self.data_summary['plts_dict'][s_plt_idx]['count_sample_wells'] 	= count_sample_wells
+			self.data_summary['plts_dict'][s_plt_idx]['count_control_wells'] 	= count_control_wells
 
 			plate_index 				+= 1
 
@@ -1307,6 +1383,7 @@ class QuantificationGUI:
 		'''Displays a summary of the data extracted from the LIMS json file.
 
 		Headings plus one summary line with key information per plate.
+		Source plates are displayed in stack order to make it easier for user to load the stack.
 		'''
 
 		if(args.debug == True):
@@ -1335,25 +1412,30 @@ class QuantificationGUI:
 		self.txt_summary.insert(END, "Num DNA source plates \t\t\t: ")
 		self.txt_summary.insert(END, "%s\n\n" % self.data_summary.get('num_src_plts'), ('tag_hl'))
 
-		# insert a row for each plate
-		# every odd numbered row has light grey background to make it easier on the eye
-		plate_index = 1
-		for plate in self.data_summary.get('plates'):
-			s_plt_idx = str(plate_index)
+		# insert a row for each plate, displaying in reverse (stack order)
+		i_plate_index 			= self.data_summary.get('num_src_plts')
+		i_src_plt_stack_posn 	= settings.get('Common').get('src_plts_initial_stk_posn') + i_plate_index - 1
+
+		for plate in self.data_summary.get('plts_dict'):
+			s_plt_idx 				= str(i_plate_index)
+			s_src_plt_stack_posn 	= str(i_src_plt_stack_posn)
 
 			bg_tags = ()
 			hl_tags = ('tag_hl')
-			if(plate_index % 2 == 1):
+	
+			# every odd numbered row has light grey background to make it easier on the eye
+			if(i_plate_index % 2 == 1):
 				bg_tags = ('tag_bg_grey')
 				hl_tags = ('tag_bg_grey', 'tag_hl')
 
-			self.txt_summary.insert(END, "[ %s ] \tBarcode \t: " % s_plt_idx, bg_tags)
-			self.txt_summary.insert(END, "%s" % self.data_summary.get('plates').get(s_plt_idx).get('barcode'), hl_tags)
+			self.txt_summary.insert(END, "[Stk Posn: %s ] \tBarcode \t: " % s_src_plt_stack_posn, bg_tags)
+			self.txt_summary.insert(END, "%s" % self.data_summary.get('plts_dict').get(s_plt_idx).get('barcode'), hl_tags)
 			self.txt_summary.insert(END, "\t\tNum Samples\t: ", bg_tags)
-			self.txt_summary.insert(END, "%s" % self.data_summary.get('plates').get(s_plt_idx).get('count_sample_wells'), hl_tags)
+			self.txt_summary.insert(END, "%s" % self.data_summary.get('plts_dict').get(s_plt_idx).get('count_sample_wells'), hl_tags)
 			self.txt_summary.insert(END, "\t\tNum Controls\t: ", bg_tags)
-			self.txt_summary.insert(END, "%s\n" % self.data_summary.get('plates').get(s_plt_idx).get('count_control_wells'), hl_tags)
-			plate_index += 1
+			self.txt_summary.insert(END, "%s\n" % self.data_summary.get('plts_dict').get(s_plt_idx).get('count_control_wells'), hl_tags)
+			i_plate_index 			-= 1
+			i_src_plt_stack_posn 	-= 1
 
 		# set required plates variable to num plates + 1 (for standards int plate)
 		self.var_num_blk_plts_reqd.set(self.data_summary.get('num_src_plts') + 1)
@@ -1514,7 +1596,7 @@ class QuantificationGUI:
 						print_debug_message("Plate indx = %s" % s_plt_idx)
 
 					src_plt_name 				= "DNAQ_source_%s" % s_plt_idx
-					src_plt_barcode 			= self.data_summary['plates'][s_plt_idx]['barcode']
+					src_plt_barcode 			= self.data_summary['plts_dict'][s_plt_idx]['barcode']
 					
 					# fetch the wells for this plate
 					curr_wells 					= self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['WELLS']
@@ -1613,7 +1695,7 @@ class QuantificationGUI:
 						print_debug_message("s_plt_idx - %s" % s_plt_idx)
 
 					src_plt_name 				= "DNAQ_source_%s" % s_plt_idx
-					src_plt_barcode 			= self.data_summary['plates'][s_plt_idx]['barcode']
+					src_plt_barcode 			= self.data_summary['plts_dict'][s_plt_idx]['barcode']
 
 					dest_plate_name 			= "DNAQ_black_%s" % s_plt_idx
 					
@@ -1990,7 +2072,7 @@ class QuantificationGUI:
 		i_src_stk_posn 						= i_srcs_init_stk_posn
 		s_src_stk_posn 						= str(i_src_stk_posn)
 		s_src_echo_id 						= str(i_src_idx)
-		s_plate_barcode 					= self.data_summary['plates']['1']['barcode']
+		s_plate_barcode 					= self.data_summary['plts_dict']['1']['barcode']
 		s_pooling_platemap_rows 			= 	(u'\t\t<Plate EchoPlateID="%s" PlateName="DNAQ_source_%s" PlateType="384PP" Barcode="%s" LidType="" PlateCategory="Source" '
 												'LocationURL="deck://Deck/1/%s/" FinalLocation="deck://Deck/1/%s/" PlateAccess="Sequential" PreRunActionSetName="Source" RunActionSetName="Source" '
 												'PostRunActionSetName="Source" StorageDeviceSetName="" EchoTemplate="DNAQ_source_%s" />\n' 
@@ -2019,7 +2101,7 @@ class QuantificationGUI:
 
 			s_src_stk_posn 					= str(i_src_stk_posn)
 			s_src_echo_id 					= str(i_src_idx)
-			s_plate_barcode 				= self.data_summary['plates'][s_src_idx]['barcode']
+			s_plate_barcode 				= self.data_summary['plts_dict'][s_src_idx]['barcode']
 			s_pooling_platemap_rows 		+= 	(u'\t\t<Plate EchoPlateID="%s" PlateName="DNAQ_source_%s" PlateType="384PP" Barcode="%s" LidType="" PlateCategory="Source" '
 												'LocationURL="deck://Deck/1/%s/" FinalLocation="deck://Deck/1/%s/" PlateAccess="Sequential" PreRunActionSetName="Source" RunActionSetName="Source" '
 												'PostRunActionSetName="Source" StorageDeviceSetName="" EchoTemplate="DNAQ_source_%s" />\n' 
@@ -2053,7 +2135,7 @@ class QuantificationGUI:
 
 			s_src_stk_posn 					= str(i_src_stk_posn)
 			s_src_echo_id 					= str(i_src_idx)
-			s_plate_barcode 				= self.data_summary['plates'][s_src_idx]['barcode']
+			s_plate_barcode 				= self.data_summary['plts_dict'][s_src_idx]['barcode']
 			s_src_to_blks_rows 				+= 	(u'\t\t<Plate EchoPlateID="%s" PlateName="DNAQ_source_%s" PlateType="384PP" Barcode="%s" LidType="" PlateCategory="Source" '
 												'LocationURL="deck://Deck/1/%s/" FinalLocation="deck://Deck/1/%s/" PlateAccess="Sequential" PreRunActionSetName="Source" RunActionSetName="Source" '
 												'PostRunActionSetName="Source" StorageDeviceSetName="" EchoTemplate="DNAQ_source_%s" />\n' 
@@ -2154,7 +2236,7 @@ class QuantificationGUI:
 			s_src_stk_posn 					= str(i_src_stk_posn)
 
 			s_plate_id 						= str(i_plate_id)
-			s_plate_barcode 				= self.data_summary['plates'][s_src_idx]['barcode']
+			s_plate_barcode 				= self.data_summary['plts_dict'][s_src_idx]['barcode']
 
 			s_plate_storage_src_rows 		+= (u'%s,0,DNAQ_source_%s,%s,384PP,Source,,False,Unknown,deck://Deck/1/%s/,deck://Deck/1/%s/,deck://Deck/1/%s/,,0,,Unknown,,\n'
 											% (s_plate_id, s_src_idx, s_plate_barcode, s_src_stk_posn, s_src_stk_posn, s_src_stk_posn))
