@@ -79,11 +79,6 @@ TODO:
 
 * generation of a PlatR file for creation of the standards plate
 
-* order the plates summary list into the order they will be in for stack 1
-	7 SRC 3
-	6 SRC 2
-	5 SRC 1
-
 * limit the size of the message queue (to 20 entries?) and delete from end (store messages in
   a queue and pop/append?)
 
@@ -111,6 +106,7 @@ from Tkinter        import * 							# for the GUI interfaces
 import ttk 												# for the GUI interface widgets
 from tkMessageBox 	import askyesno 					# for pop-up message boxes
 from tkFileDialog 	import askopenfilename 				# for file selection
+from collections 	import deque 						# for message queuing
 
 from pprint import pprint # for pretty printing e.g. lists and dictionaries
 
@@ -424,6 +420,8 @@ class QuantificationGUI:
 	lims_src_plt_grp_filepath		= "" # holds selected lims plate grouping file filepath
 	data_lims_src_plt_grp 			= {} # holds selected lims plate grouping data once read from file
 	data_summary 					= {} # holds summarised data
+	message_queue 					= deque([]) # stores a list of messages for display
+	message_queue_size 				= 25
 
 	def __init__(self, master):
 		'''Initialise a new frame for the GUI'''
@@ -844,111 +842,83 @@ class QuantificationGUI:
 			self.display_message(True, "ERROR: Exception copying the LIMS plate grouping file into the experiment directory.\nError Message: <%s>" % str(e))
 			return
 
-		# start to monitor quantification
-		self.monitor_dna_quantification_standards_rundef()
-
-		return
-
-	def monitor_dna_quantification_standards_rundef(self):
-		'''Monitor the DNA quantification process to generate and read the standards black plate.
-
-		Functionality:
-		- Pools DNA source plate wells into the standards plate
-		- Creates a corresponding black plate with multiple replicates of the ladder and 
-		pool wells
-		- Uses the reads of the read results of the black plate to calculate a plots of
-		log(2) fluorescence vs log(2) DNA concentration
-		- Creates data and graph image files to display to the user so the user can decides
-		whether to continue
-		'''
-
-		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
-
 		# dna quantification standards plate creation and read is done with a runset that has two runs
 		self.current_rundef_identifier = {'rundef_identifier':'dnaq_process_standards', 'filename':self.dnaq_standards_rundef_expt_filename}
-		self.monitor_tempo_rundef()
 
-		return
-
-	def monitor_quantification_dna_sources_rundef(self):
-		'''Monitor the DNA quantification process to generate and read the DNA source black plates.
-
-		Functionality:
-		TODO
-
-		'''
-
-		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
-
-		# dna quantification standards plate creation and read is done with a runset that has two runs
-		self.current_rundef_identifier = {'rundef_identifier':'dnaq_process_dna_sources', 'filename':self.dnaq_dna_srcs_rundef_expt_filename}
-		self.monitor_tempo_rundef()
-
-		return
-
-	def monitor_tempo_rundef(self):
-		'''Monitor a rundef processing in Tempo.
-
-		Uses the current rundef identifier to determine what to do.
-		'''
-
-		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
-
-		# monitor Tempo running the rundef
 		if(args.debug == True):
 			print_debug_message("Current RunDef stage is <%s>" % self.current_rundef_identifier['rundef_identifier'])
 
-		# monitor the rundef and extract the RunIds, using a recursive function
-		if (self.monitor_tempo_rundef_directories(self.current_rundef_identifier['filename'])):
+		# monitor the rundef and extract the RunIds
+		self.monitor_tempo_directories_for_processed_rundef_file()
+
+		return
+
+	# 	# monitor the rundef and extract the RunIds, using a recursive function
+	# 	self.monitor_tempo_directories_for_processed_rundef_file()
+
+		# if(not self.has_tempo_validated_rundef_file):
+		# 	# abort the experiment and tidy up
+		# 	# TODO: should we add the ability to retry here?
+		# 	self.abort_experiment()
+		# 	return
+
+		# # ???
+		# # if (self.monitor_tempo_directories_for_processed_rundef_file(self.current_rundef_identifier['filename'])):
 			
-			# the rundef file has been processed by Tempo into the outbox, and we should now have RunIDs for the current RunDef
-			if(args.debug == True):
-				print_debug_message("Run processing IDs:")
-				pprint(self.current_run_identifiers)
+		# # the rundef file has been processed by Tempo into the outbox, and we should now have RunIDs for the current RunDef
+		# if(args.debug == True):
+		# 	print_debug_message("Run identifiers:")
+		# 	pprint(self.current_run_identifiers)
 
-			# monitor each run within the rundef (runset)
-			for self.current_run_identifier in self.current_run_identifiers:
+		# # monitor each run within the rundef (runset)
+		# for self.current_run_identifier in self.current_run_identifiers:
 
-				if(args.debug == True):
-					print_debug_message("Current Run identifier:")
-					pprint(self.current_run_identifier)
+		# 	if(args.debug == True):
+		# 		print_debug_message("Current Run identifier:")
+		# 		pprint(self.current_run_identifier)
 
-				# determine the run directory path
-				try:
-					current_run_dir = os.path.join(settings.get('Common').get('dir_tempo_runs_root'), 'Run_' + str(self.current_run_identifier['run_id_num']))
-				except Exception as e:
-					self.display_message(True, "ERROR: Exception determining the current run directory.\nError Message: <%s>" % str(e))
-					return
+		# 	# determine the run directory path
+		# 	try:
+		# 		current_run_dir 		= os.path.join(settings.get('Common').get('dir_tempo_runs_root'), 'Run_' + str(self.current_run_identifier['run_id_num']))
+		# 		current_run_filename  	= 'Run_' + str(self.current_run_identifier['run_id_num']) + '.run'
 
-				# monitor the run state
-				if(self.monitor_tempo_run(current_run_dir)):
-					if(args.debug == True):
-						print_debug_message("Run <%s> completed successfully, now performing post-run actions" % str(self.current_run_identifier['run_id_num']))
+		# 		if(args.debug == True):
+		# 			print_debug_message("Current Run directory = <%s>" % current_run_dir)
+		# 			print_debug_message("Current Run filename  = <%s>" % current_run_filename)
 
-					# run completed successfully, perform any post-run actions depending upon value of run_processing_id
-					if(not self.perform_post_run_actions()):
-						self.display_message(True, "ERROR: Run number <%s> post-run actions failed. Cannot continue monitoring." % str(self.current_run_identifier['run_id_num']))
-						self.abort_experiment()
-						return
-				else:
-					# run was stopped prematurely or there was an exception, abort the experiment
-					if(args.debug == True):
-						print_debug_message("Run <%s> was stopped prematurely by Tempo" % str(self.current_run_identifier['run_id_num']))
+		# 	except Exception as e:
+		# 		self.display_message(True, "ERROR: Exception determining the current run directory.\nError Message: <%s>" % str(e))
+		# 		return
 
-					self.display_message(True, "ERROR: Run number <%s> was Stopped by Tempo. Cannot continue monitoring." % str(self.current_run_identifier['run_id_num']))
-					self.abort_experiment()
-					return
-		else:
-			# error with isolating RunIDs
-			self.display_message(True, "ERROR: Failed to isolate the RunIDs from the RunDef file, cannot continue")
-			return
+		# 	# monitor the run state
+		# 	self.is_run_completed_successfully = None
+		# 	self.monitor_tempo_run(current_run_dir, current_run_filename)
 
+		# 	if(self.is_run_completed_successfully == True):
+		# 		if(args.debug == True):
+		# 			print_debug_message("Run <%s> completed successfully, now performing post-run actions" % str(self.current_run_identifier['run_id_num']))
 
-		# if we reach here the rundef has completed and we can clean up		
-		self.display_message(False, "Monitoring of RunDef <%s> has completed" % self.current_rundef_identifier['rundef_identifier'])
+		# 		if(not self.perform_post_run_actions()):
+		# 			self.display_message(True, "ERROR: Run number <%s> post-run actions failed. Cannot continue monitoring." % str(self.current_run_identifier['run_id_num']))
+		# 			self.abort_experiment()
+		# 			return
+		# 	elif(self.is_run_completed_successfully == False):
+		# 		# run was stopped prematurely or there was an exception, abort the experiment
+		# 		if(args.debug == True):
+		# 			print_debug_message("Run <%s> was stopped prematurely by Tempo" % str(self.current_run_identifier['run_id_num']))
+
+		# 		self.display_message(True, "ERROR: Run number <%s> was Stopped by Tempo. Cannot continue monitoring." % str(self.current_run_identifier['run_id_num']))
+		# 		self.abort_experiment()
+		# 		return
+
+		# 	else:
+		# 		# unexpected result
+		# 		self.display_message(True, "ERROR: Run <%s> success flag was None, unexpected result. Cannot continue." % str(self.current_run_identifier['run_id_num']))
+		# 		self.abort_experiment()
+		# 		return
+
+		# # if we reach here the rundef has completed and we can clean up		
+		# self.display_message(False, "Monitoring of RunDef <%s> has completed" % self.current_rundef_identifier['rundef_identifier'])
 
 		# Continue to monitor the tempo outbox and error directories in the background whilst Tempo runs.
 		# Look for a RunDef in these directories matching the RunDef 3 name (will have timestamp prefix).
@@ -989,9 +959,9 @@ class QuantificationGUI:
 		# Passed plates will be going on to Run 4 for Nextera.
 
 
-		return
+		# return
 
-	def monitor_tempo_rundef_directories(self, filename):
+	def monitor_tempo_directories_for_processed_rundef_file(self):
 		'''Monitor the Tempo outbox and error directories for a processed RunDef file'''
 
 		dir_outbox 	= settings.get('Common').get('dir_tempo_rundef_outbox')
@@ -1000,15 +970,18 @@ class QuantificationGUI:
 		filelist = os.listdir(dir_outbox)
 		if (not filelist == []):
 			for rundef_file in filelist:
-				if rundef_file.endswith(filename): # check filename ends with expected string					
-					return self.verify_rundef_file_and_extract_run_ids(rundef_file)
+				# in the outbox directory Tempo prefixes the filename with a timestamp (the start time)	
+				if rundef_file.endswith(self.current_rundef_identifier['filename']):				
+					self.check_rundef_file_and_extract_run_ids(rundef_file)
+					return
 
 		filelist = os.listdir(dir_error)
 		if (not filelist == []):
 			for rundef_file in filelist:
-				if rundef_file.endswith(filename): # check filename ends with expected string					
-					self.handle_rundef_file_error(rundef_file)
-					return False
+				# in the error directory Tempo leaves the filename intact (no prefix or suffix)
+				if rundef_file.endswith(self.current_rundef_identifier['filename']):					
+					self.extract_rundef_file_error_information(rundef_file)
+					return
 		
 		self.display_message(False, "Waiting for Tempo to process the RunDef file...")
 
@@ -1016,9 +989,9 @@ class QuantificationGUI:
 		# e.g. after(100, myfunction, arg1, arg2, arg3, ...)
 		# N.B. to prevent infinite recursion the function has no brackets after it! arguments follow separated by brackets
 		# with brackets after the function it runs the function and then uses the result in the after, i.e. recursion happens here
-		self.root.after(2000, self.monitor_tempo_rundef_directories, filename)
+		self.root.after(2000, self.monitor_tempo_directories_for_processed_rundef_file)
 
-	def verify_rundef_file_and_extract_run_ids(self, rundef_file):
+	def check_rundef_file_and_extract_run_ids(self, rundef_file):
 		'''Extracts RunIDs from the RunDef file'''
 
 		if(args.debug == True):
@@ -1026,7 +999,7 @@ class QuantificationGUI:
 
 		dir_outbox 	= settings.get('Common').get('dir_tempo_rundef_outbox')
 
-		self.display_message(False, "Tempo has successfully processed the RunDef file into the outbox dir: <%s>, now attempting to verify file and parse RunIDs" % rundef_file)
+		self.display_message(False, "Tempo has processed the RunDef file into the outbox dir: <%s>, now attempting to verify file and parse RunIDs" % rundef_file)
 
 		# parse RunDef (XML format)file to identify run ids
 		run_ids = []
@@ -1055,18 +1028,18 @@ class QuantificationGUI:
 				# verify this file is for this runset
 				if(not run_ref_id ==self.data_summary['lims_reference_id']):
 					self.display_message(True, "ERROR: Run ReferenceID <%s> does not match expected when attempting to parse the RunDef file to extract RunIDs" % run_ref_id)
-					return False
+					return
 
 				# verify that the run id extracted is a number
 				if(run_id == None or run_id == '0'):
 					self.display_message(True, "ERROR: RunID zero or null when attempting to parse the RunDef file to extract RunIDs")
-					return False
+					return
 				else:
 					run_ids.append(run_id)
 
 		except Exception as e:
 			self.display_message(True, "ERROR: Exception when attempting to parse the RunDef file to extract RunIDs.\nError Message: <%s>" % str(e))
-			return False
+			return
 
 		# set the run processing identifiers according to the current_rundef_identifier 
 		self.current_run_identifiers = []
@@ -1077,21 +1050,22 @@ class QuantificationGUI:
 				self.current_run_identifiers.append({'run_identifier_name' : 'dnaq_process_standards_run_2', 'run_id_num' : run_ids[1]})
 			else:
 				self.display_message(True, "ERROR: Unexpected number of RunIDs found in Standards RunDef file, found <%s> when expecting 2. Cannot continue." % run_ids.len)
-				return False
+				return
 		elif self.current_rundef_identifier['rundef_identifier'] == 'dnaq_process_dna_sources':
 			# expecting one run id
 			if(len(run_ids) == 1):
 				self.current_run_identifiers.append({'run_identifier_name' : 'dnaq_process_dna_sources_run_1', 'run_id_num' : run_ids[0]})
 			else:
 				self.display_message(True, "ERROR: Unexpected number of RunIDs found in DNA Sources RunDef file, found <%s> when expecting 1. Cannot continue." % run_ids.len)
-				return False
+				return
 		else:
 			self.display_message(True, "ERROR: Unrecognised current rundef identifier <%s>. Cannot continue." % self.current_rundef_identifier['rundef_identifier'])
-			return False
+			return
 
-		return True
+		self.monitor_tempo_rundef_run(0)
+		return
 
-	def handle_rundef_file_error(self, file):
+	def extract_rundef_file_error_information(self, file):
 		'''Called if the RunDef file is located in the Tempo error directory'''
 
 		if(args.debug == True):
@@ -1102,13 +1076,36 @@ class QuantificationGUI:
 		# If Tempo detects an error with the RunDef file it moves it to the /error directory (without renaming) and creates a .err file matching the RunDef file name
 		self.display_message(True, "Tempo detected a problem with this RunDef file. See the Tempo error directory <%s> for more information" % dir_error)
 
-		# abort the experiment and tidy up
-		# TODO: should we add the ability to retry here?
-		self.abort_experiment()
+		#TODO: extract information from rundef .err file and display to user
 
 		return
 
-	def monitor_tempo_run(self, run_dir):
+	def monitor_tempo_rundef_run(self, run_index):
+		'''Process the run with the specified index from the RunDef'''
+
+		if(args.debug == True):
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+
+		self.current_run_identifier = self.current_run_identifiers[run_index]
+
+		# determine the run directory path
+		try:
+			current_run_dir 		= os.path.join(settings.get('Common').get('dir_tempo_runs_root'), 'Run_' + str(self.current_run_identifier['run_id_num']))
+			current_run_filename  	= 'Run_' + str(self.current_run_identifier['run_id_num']) + '.run'
+
+			if(args.debug == True):
+				print_debug_message("Current Run directory = <%s>" % current_run_dir)
+				print_debug_message("Current Run filename  = <%s>" % current_run_filename)
+
+		except Exception as e:
+			self.display_message(True, "ERROR: Exception determining the current run directory.\nError Message: <%s>" % str(e))
+			return
+
+		# monitor the run state
+		self.monitor_tempo_run_directory(current_run_dir, current_run_filename)
+		return
+
+	def monitor_tempo_run_directory(self, run_dir, run_filename):
 		'''Monitor the state of the run via a file in the Tempo run-specific directory'''
 
 		current_runstate = None
@@ -1116,16 +1113,14 @@ class QuantificationGUI:
 			# check whether directory exists yet
 			if(os.path.exists(run_dir)):
 				# check if .run file exists
-				run_filename       	= 'Run_' + str(self.current_run_identifier['run_id_num']) + '.run'
 				run_state_filepath 	= os.path.join(run_dir, run_filename)
 
+				# if the .run file exists extract the RunState from the XML
 				if(os.path.isfile(run_state_filepath)):
 					# parse state from .run file (XML)
 					tree				= xml.etree.ElementTree.parse(run_state_filepath).getroot()
-
-					# node we want is <RunState> within root
-					node 				= tree.find('./RunState')
-					current_runstate 	= node.text
+					runstate_node 		= tree.find('./RunState') # node we want is <RunState> within root
+					current_runstate 	= runstate_node.text
 
 		except Exception as e:
 			self.display_message(True, "ERROR: Exception when attempting to parse the .run file to extract RunState.\nError Message: <%s>" % str(e))
@@ -1142,15 +1137,21 @@ class QuantificationGUI:
 
 		if(not current_runstate is None):
 			if(current_runstate == 'Complete'):
-				return True
+				if(args.debug == True):
+					print_debug_message("RunState is Complete")
+				self.perform_post_run_actions()
+				return
 			elif(current_runstate == 'Stopped'):
-				return False
+				if(args.debug == True):
+					print_debug_message("RunState is Stopped")
+				self.perform_run_stopped_actions()
+				return
 			else:
 				self.display_message(False, "Waiting for Tempo to update the Run file <%s>, current state is <%s>" % (run_filename, current_runstate))
 		else:
 			self.display_message(False, "Waiting for Tempo to create the Run file <%s>" % run_filename)
-				
-		return self.root.after(2000, self.monitor_tempo_run, run_dir)
+
+		self.root.after(2000, self.monitor_tempo_run_directory, run_dir, run_filename)
 
 	def perform_post_run_actions(self):
 		'''Perform post-run actions'''
@@ -1172,7 +1173,9 @@ class QuantificationGUI:
 			# Use the Run_1/Plates1.xml file to map the plate ids and names to our DNA plate barcodes ] CHECK: will or will not the ids match to those in Run 3 as seperate rundef?!
 			
 			self.display_message(False, "Post-Run actions for dnaq_process_standards_run_1 completed")
-			return True
+
+			# process the second Run in the RunDef to transfer from Standards to black plate
+			self.monitor_tempo_rundef_run(1)
 
 		elif(self.current_run_identifier['run_identifier_name'] == 'dnaq_process_standards_run_2'):
 			# do stuff specific to this run
@@ -1207,17 +1210,47 @@ class QuantificationGUI:
 
 
 			self.display_message(False, "Post-Run actions for dnaq_process_standards_run_2 completed")
-			return True
-		
+
 		elif(self.current_run_identifier['run_identifier_name'] == 'dnaq_process_dna_sources_run_1'):
 			# do stuff specific to this run
 			self.display_message(False, "Post-Run actions for dnaq_process_dna_sources_run_1 completed")
-			return True
-		
+
 		else:
 			# not recognised error
 			self.display_message(True, "ERROR: Unrecognised run identifier <%s> when attempting to perform post-Run actions. Cannot continue." % self.current_run_identifier['run_identifier_name'])
-			return False
+			
+		return
+
+	def perform_run_stopped_actions(self):
+		'''Perform any actions required after Tempo has Stopped the Run'''
+
+		if(args.debug == True):
+			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("Tempo has Stopped the Run with identifier <%s> and RunID <%s>" % (self.current_run_identifier['run_identifier_name'], str(self.current_run_identifier['run_id_num'])))
+
+		self.display_message(True, "Tempo has Stopped RunID <%s>, tidying up" % str(self.current_run_identifier['run_id_num']))
+
+		# perform post run actions by identifiers
+		if(self.current_run_identifier['run_identifier_name'] == 'dnaq_process_standards_run_1'):
+			# do stuff specific to this run
+
+			self.display_message(False, "Stopped Run actions for dnaq_process_standards_run_1 completed")
+
+		elif(self.current_run_identifier['run_identifier_name'] == 'dnaq_process_standards_run_2'):
+			# do stuff specific to this run
+
+			self.display_message(False, "Stopped Run actions for dnaq_process_standards_run_2 completed")
+
+		elif(self.current_run_identifier['run_identifier_name'] == 'dnaq_process_dna_sources_run_1'):
+			# do stuff specific to this run
+
+			self.display_message(False, "Stopped Run actions for dnaq_process_dna_sources_run_1 completed")
+
+		else:
+			# not recognised error
+			self.display_message(True, "ERROR: Unrecognised run identifier <%s> when attempting to perform Stopped Run actions. Cannot continue." % self.current_run_identifier['run_identifier_name'])
+			
+		return
 
 	def abort_experiment(self):
 		'''Abort the experiment and tidy up files and directories'''
@@ -1250,13 +1283,18 @@ class QuantificationGUI:
 		self.txt_msg_panel.tag_configure('msg_standard', font=font_arial_normal, foreground=colour_green)
 
 		# create a timestamp
-		s_ts                              = time.strftime("%H:%M:%S  ")
+		s_ts                              	= time.strftime("%H:%M:%S  ")
+		self.message_queue.append({'is_error' : is_error, 'msg' : s_ts + message + '\n'})
+		if(len(self.message_queue) > self.message_queue_size):
+			self.message_queue.popleft() # remove oldest message
 
-		# display message with timestamp prefix
-		if(is_error):
-			self.txt_msg_panel.insert('1.0', s_ts + message + '\n', ('msg_error'))
-		else:
-			self.txt_msg_panel.insert('1.0', s_ts + message + '\n', ('msg_standard'))
+		# display messages with timestamp prefix
+		self.txt_msg_panel.delete('1.0', END)
+		for msg in self.message_queue:
+			if(msg['is_error']):
+				self.txt_msg_panel.insert('1.0', msg['msg'], ('msg_error'))
+			else:
+				self.txt_msg_panel.insert('1.0', msg['msg'], ('msg_standard'))
 
 		return
 
@@ -1454,6 +1492,7 @@ class QuantificationGUI:
 		# clear the summary text and message panel
 		self.txt_summary.delete('1.0', END)
 		self.txt_msg_panel.delete('1.0', END)
+		self.message_queue = deque([])
 
 		self.txt_summary.insert('1.0', "")
 		self.txt_msg_panel.insert('1.0', "")
@@ -1472,30 +1511,23 @@ class QuantificationGUI:
 
 		if(args.debug == True):
 			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message("Num plates required = %s" % str(self.var_num_blk_plts_reqd.get()))
+			print_debug_message("Num plates in stack = %s" % str(self.num_blk_plates_deck.get()))
 
-		# Clear the message panel
-		# self.txt_msg_panel.delete('1.0', END)
-
-		num_blk_deck = self.num_blk_plates_deck.get()
-		num_blk_reqd = self.var_num_blk_plts_reqd.get()
-
-		if(args.debug == True):
-			print_debug_message("Num plates required = %s" % str(num_blk_reqd))
-			print_debug_message("Num plates in stack = %s" % str(num_blk_deck))
-
-		if(num_blk_reqd == 0):
+		# compare number of plates required to number user has indicated they've loaded (to force them to think about it and check stack)
+		if(self.var_num_blk_plts_reqd.get() == 0):
 			# error should be > 0
 			self.display_message(True, "ERROR: Number of black plates required is zero, should be 1 or more.")
 			return False
-		elif(num_blk_deck == 0):
+		elif(self.num_blk_plates_deck.get() == 0):
 			# error user should set to num in stack
 			self.display_message(True, "ERROR: Please load sufficient black plates (%s or more required) into stack 4 "\
-				"and use the dropdown entry field to set how many black plates there are now in the stack." % str(num_blk_reqd))
+				"and use the dropdown entry field to set how many black plates there are now in the stack." % str(self.var_num_blk_plts_reqd.get()))
 			return False
-		elif(num_blk_deck < num_blk_reqd):
+		elif(self.num_blk_plates_deck.get() < self.var_num_blk_plts_reqd.get()):
 			# error user needs to load at least reqd plates to stack
 			self.display_message(True, "ERROR: Insufficient black plates (%s or more required), please add more and use the "\
-				"dropdown entry field to set how many black plates there are now in stack 4." % str(num_blk_reqd))
+				"dropdown entry field to set how many black plates there are now in stack 4." % str(self.var_num_blk_plts_reqd.get()))
 			return False
 		if askyesno('Verify', 'This will generate the Access System RunDef and Echo files. Are you sure?'):
 			self.display_message(False, "Starting file creation process, please wait...")
