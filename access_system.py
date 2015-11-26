@@ -65,10 +65,6 @@ Outputs:
 
 
 TODO:
-* add logging with a generic append to log function to the expt dir,
-  this should log key information only, e.g. user choices, refs to files and where. 
-  they have been written. Timestamp per entry row.
-
 * add monitoring of Tempo output to determine when runs are complete and whether they have
   been successful.
 
@@ -79,14 +75,18 @@ TODO:
 
 * generation of a PlatR file for creation of the standards plate
 
-* limit the size of the message queue (to 20 entries?) and delete from end (store messages in
-  a queue and pop/append?)
-
 * if we detect an issue how do we stop Tempo from running? API call?
 
 * make user displayed messages more friendly but limit to one line. 
   can we have these all in one place in the config file so easier to edit?
   how to do that and still allow for dynamic addition of values?
+
+* add library prep config file (what does this hold)
+
+* add logging messages throughout
+
+* add button to 'abort' run that tidies up experiment directory - for when Tempo crashes or ends run in poor way.
+  probably also needs to trap a 'close window' event in case user clicks there during a run.
 
 '''
 
@@ -113,7 +113,7 @@ from pprint import pprint # for pretty printing e.g. lists and dictionaries
 # -----------------------------------------------------------------------------
 # Variables
 # -----------------------------------------------------------------------------
-script_version 				= "1.0"
+script_version 				= '1.0'
 
 # configuration filepath is relative to the location of this script
 config_filepath 			= '../Access_Configs/config/access_system.cfg' 
@@ -150,23 +150,23 @@ def parse_command_line_arguments():
 	Most critical is the mode argument that tells us which functionality to use for this call to the program.
 	'''
 	parser = argparse.ArgumentParser()
-	parser.add_argument("--debug", 			help="Debug mode for development, default is off.", 	action="store_true")
-	parser.add_argument("-v", "--verbose", 	help="increase log output verbosity", 					action="store_true")
-	parser.add_argument("-m", "--mode", 	help="Mode to run script in e.g. quant.", type=str)
+	parser.add_argument('--debug', 			help='Debug mode for development, default is off.', 	action='store_true')
+	parser.add_argument('-v', '--verbose', 	help='increase log output verbosity', 					action='store_true')
+	parser.add_argument('-m', '--mode', 	help='Mode to run script in e.g. quant.', type=str)
 	global args
 	args = parser.parse_args()
 	
 	if(args.debug == True):
-		print_debug_message("DEBUG mode is active")		
+		print_debug_message('DEBUG mode is active')		
 		if(args.verbose == True):
-			print_debug_message("Verbose mode is active")
+			print_debug_message('Verbose mode is active')
 
 	# check if mode is valid
 	if args.mode in valid_modes:
 		if(args.debug == True):
-			print_debug_message("Mode is valid: " + args.mode)
+			print_debug_message('Mode is valid: %s' % args.mode)
 	else:
-		sys.exit("Access System Script: ERROR: Chosen mode is not recognised <" + str(args.mode)+ ">, cannot continue")
+		sys.exit('Access System Script: ERROR: Chosen mode is not recognised <%s>, cannot continue' % str(args.mode))
 
 	return
 
@@ -190,7 +190,7 @@ def parse_access_system_config_file():
 	'''
 
 	if(args.debug == True):
-		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message('In %s' % inspect.currentframe().f_code.co_name)
 
 	# Read the configuration file
 	config = read_configuration_file(config_filepath)
@@ -250,20 +250,20 @@ def parse_access_system_config_file():
 						elif(opt_type == 'bool'):
 							settings[opt_group][opt] = bool(config[opt_group][opt])
 						else:
-							sys.exit("Access System Script: ERROR: Configuration file field type not understood for option group <%s> and option <%s>, cannot continue" % (str(opt_group), str(opt)))
+							sys.exit('Access System Script: ERROR: Configuration file field type not understood for option group <%s> and option <%s>, cannot continue' % (str(opt_group), str(opt)))
 					else:
-						sys.exit("Access System Script: ERROR: Configuration file format option group <%s> is missing option <%s>, cannot continue" % (str(opt_group), str(opt)))
+						sys.exit('Access System Script: ERROR: Configuration file format option group <%s> is missing option <%s>, cannot continue' % (str(opt_group), str(opt)))
 				else:
-					sys.exit("Access System Script: ERROR: Configuration file format missing option group <%s>, cannot continue" % str(opt_group))
+					sys.exit('Access System Script: ERROR: Configuration file format missing option group <%s>, cannot continue' % str(opt_group))
 	except ValueError as ve:
-		sys.exit("Access System Script: ValueError parsing config file into settings from filepath <%s>. Cannot continue. Message: %s" % (config_filepath, ve.message))
+		sys.exit('Access System Script: ValueError parsing config file into settings from filepath <%s>. Cannot continue. Message: %s' % (config_filepath, ve.message))
 	except Exception as e:
-		sys.exit("Access System Script: Exception parsing config file into settings from filepath <%s>. Cannot continue. Message: %s" % (config_filepath, e.message))
+		sys.exit('Access System Script: Exception parsing config file into settings from filepath <%s>. Cannot continue. Message: %s' % (config_filepath, e.message))
 
 	# Print out settings if in debug mode
 	if(args.debug == True):
 		print_debug_message('-' * 80)
-		print_debug_message("Settings from config file are as follows:")
+		print_debug_message('Settings from config file are as follows:')
 		print_debug_message('-' * 80)
 		pprint(settings)
 		print_debug_message('-' * 80)
@@ -280,21 +280,21 @@ def parse_quant_standards_config_file(stnd_type):
 	'''
 
 	if(args.debug == True):
-		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
-		print_debug_message("Input standards type: %s" % stnd_type)
+		print_debug_message('In %s' % inspect.currentframe().f_code.co_name)
+		print_debug_message('Input standards type: %s' % stnd_type)
 
 	# Read the relevant configuration file
-	standards_config_filename = ""
+	standards_config_filename = ''
 	if(stnd_type == 'SS2'):
 		standards_config_filename = settings.get('Quantification').get('dnaq_fn_standards_ss2')
 
 	if(args.debug == True):
-		print_debug_message("Standards config filename : %s" % standards_config_filename)	
+		print_debug_message('Standards config filename : %s' % standards_config_filename)	
 
 	standards_config_filepath = os.path.join(settings.get('Quantification').get('dnaq_dir_standards'), standards_config_filename)
 
 	if(args.debug == True):
-		print_debug_message("Standards config filepath : %s" % standards_config_filepath)
+		print_debug_message('Standards config filepath : %s' % standards_config_filepath)
 
 	config = read_configuration_file(standards_config_filepath)
 
@@ -334,11 +334,11 @@ def parse_quant_standards_config_file(stnd_type):
 						elif(opt_type == 'bool'):
 							quant_standards[stnd_type][opt_group][opt] = bool(config[opt_group][opt])
 						else:
-							sys.exit("Access System Script: ERROR: Standards file field type not understood for option group <%s> and option <%s>, cannot continue" % (str(opt_group), str(opt)))
+							sys.exit('Access System Script: ERROR: Standards file field type not understood for option group <%s> and option <%s>, cannot continue' % (str(opt_group), str(opt)))
 					else:
-						sys.exit("Access System Script: ERROR: Standards file format option group <%s> is missing option <%s>, cannot continue" % (str(opt_group), str(opt)))
+						sys.exit('Access System Script: ERROR: Standards file format option group <%s> is missing option <%s>, cannot continue' % (str(opt_group), str(opt)))
 				else:
-					sys.exit("Access System Script: ERROR: Standards file format missing option group <%s>, cannot continue" % str(opt_group))
+					sys.exit('Access System Script: ERROR: Standards file format missing option group <%s>, cannot continue' % str(opt_group))
 
 		# retrieve sub-section information for the ladder
 		lad_idx 			= 1
@@ -368,15 +368,15 @@ def parse_quant_standards_config_file(stnd_type):
 			quant_standards[stnd_type]['Pools']['sources'][s_src_idx]['black_plt_well_locns'] 	= config['Pools'][s_src_idx]['black_plt_well_locns'] # creates list of well posn strings
 			src_idx 		+= 1
 	except ValueError as ve:
-		sys.exit("Access System Script: ValueError parsing standards config file from filepath <%s>. Cannot continue. Message: %s" % (standards_config_filepath, ve.message))
+		sys.exit('Access System Script: ValueError parsing standards config file from filepath <%s>. Cannot continue. Message: %s' % (standards_config_filepath, ve.message))
 	except Exception as e:
-		sys.exit("Access System Script: Exception parsing standards config file from filepath <%s>. Cannot continue. Message: %s" % (standards_config_filepath, e.message))
+		sys.exit('Access System Script: Exception parsing standards config file from filepath <%s>. Cannot continue. Message: %s' % (standards_config_filepath, e.message))
 
 
 	# print out quant_standards if in debug mode
 	if(args.debug == True):
 		print_debug_message('-' * 80)
-		print_debug_message("Standards are as follows:")
+		print_debug_message('Standards are as follows:')
 		print_debug_message('-' * 80)
 		pprint(quant_standards)
 		print_debug_message('-' * 80)
@@ -390,7 +390,7 @@ def parse_quant_standards_config_file(stnd_type):
 # 	'''
 
 # 	if(args.debug == True):
-# 		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
+# 		print_debug_message('In %s' % inspect.currentframe().f_code.co_name)
 
 # 	return
 
@@ -401,7 +401,7 @@ def process_quant():
 	'''Entry method for processing the quant mode'''
 
 	if(args.debug == True):
-		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message('In %s' % inspect.currentframe().f_code.co_name)
 
 	# build the user interface to ask the user to the select files required 
 	display_gui_quant()
@@ -417,7 +417,7 @@ class QuantificationGUI:
 	# -----------------------------------------------------------------------------
 	# Variables
 	# -----------------------------------------------------------------------------
-	lims_src_plt_grp_filepath		= "" # holds selected lims plate grouping file filepath
+	lims_src_plt_grp_filepath		= '' # holds selected lims plate grouping file filepath
 	data_lims_src_plt_grp 			= {} # holds selected lims plate grouping data once read from file
 	data_summary 					= {} # holds summarised data
 	message_queue 					= deque([]) # stores a list of messages for display
@@ -427,7 +427,7 @@ class QuantificationGUI:
 		'''Initialise a new frame for the GUI'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
 		self.root = master
 
@@ -435,7 +435,7 @@ class QuantificationGUI:
 		setup_styles_and_themes()
 
 		# root holds the main frame which holds a number of sub-frames
-		main_frame 				= Frame(master, bg = "", colormap = "new")		
+		main_frame 				= Frame(master, bg = '', colormap = 'new')		
 
 		# give columns equal weighting
 		col_num = 0
@@ -447,7 +447,7 @@ class QuantificationGUI:
 		# ---------------------------------------------------------------------
 		# main_frame row 0 - Team name and Sanger logo
 		# ---------------------------------------------------------------------
-		s_script_info 			= "Single Cell Genomics Core Facility\nScript Version: %s" % script_version
+		s_script_info 			= 'Single Cell Genomics Core Facility\nScript Version: %s' % script_version
 		main_frame.grid_rowconfigure(0, weight=1)
 		lbl_scgcf_params 		= {'widg_text':s_script_info, 
 									'widg_fg':colour_lt_green,
@@ -471,7 +471,7 @@ class QuantificationGUI:
 		# main_frame row 1 - Title label
 		# ---------------------------------------------------------------------
 		main_frame.grid_rowconfigure(1, weight=1)
-		lbl_title_params 		= {'widg_text':"DNA Quantification", 
+		lbl_title_params 		= {'widg_text':'DNA Quantification', 
 									'widg_fg':colour_blue,
 									'widg_font':font_arial_huge_bold,
 									'widg_justify':CENTER,
@@ -510,7 +510,7 @@ class QuantificationGUI:
 	def create_quantification_setup_frame(self, parent_frame):
 		'''Build the quantification setup frame for the main GUI'''
 
-		frame 					= Frame(parent_frame, bg = "", colormap = "new")
+		frame 					= Frame(parent_frame, bg = '', colormap = 'new')
 
 		# give columns equal weighting
 		col_num = 0
@@ -522,10 +522,10 @@ class QuantificationGUI:
 		# frame row 0 - Instructions for user text area
 		# ---------------------------------------------------------------------
 		frame.grid_rowconfigure(0, weight=1)
-		self.instr_text  		= "Click 'Select File' to choose the Quantification plate grouping file downloaded "\
-		"from the LIMS (or the equivalent manually created file). Check the summary of the information from the file, "\
-		"confirm how many black plates are loaded into stack 4 and then press 'Create Access Files' to create the RunDef "\
-		"and ECHO csv files."
+		self.instr_text  		= 'Click <Select File> to choose the Quantification plate grouping file downloaded '\
+		'from the LIMS (or the equivalent manually created file). Check the summary of the information from the file, '\
+		'confirm how many black plates are loaded into stack 4 and then press \'Create Access Files\' to create the RunDef '\
+		'and ECHO csv files.'
 		txt_instr_params 		= {'widg_text':self.instr_text, 
 									'widg_height':3,
 									'widg_state':DISABLED,
@@ -549,7 +549,7 @@ class QuantificationGUI:
 									'grid_has_border':True}
 		self.lbl_lims_fp 		= create_widget_label(frame, lbl_lims_fp_params)
 
-		btn_sel_lims_file_params = {'widg_text':"Select LIMS File",
+		btn_sel_lims_file_params = {'widg_text':'Select LIMS File',
 									'widg_width':16,
 									'widg_command':self.lims_file_open_callback,
 									'grid_row':1,
@@ -574,7 +574,7 @@ class QuantificationGUI:
 		# frame row 3 - Black plates required labels
 		# ---------------------------------------------------------------------
 		frame.grid_rowconfigure(3, weight=1)
-		lbl_blk_plts_req_params = {'widg_text':"Number of black plates needed (incl. for standards) : ", 
+		lbl_blk_plts_req_params = {'widg_text':'Number of black plates needed (incl. for standards) : ', 
 									'grid_row':3,
 									'grid_col':2,
 									'grid_cols':1,
@@ -594,7 +594,7 @@ class QuantificationGUI:
 		# frame row 4 - Actual black plates in system label and combobox
 		# ---------------------------------------------------------------------
 		frame.grid_rowconfigure(4, weight=1)
-		lbl_num_blk_plts_deck_params = {'widg_text':"Actual number of black plates loaded in stack four : ", 
+		lbl_num_blk_plts_deck_params = {'widg_text':'Actual number of black plates loaded in stack four : ', 
 									'grid_row':4,
 									'grid_col':2,
 									'grid_cols':1,
@@ -620,7 +620,7 @@ class QuantificationGUI:
 		# frame row 5 - Create Files Button
 		# ---------------------------------------------------------------------
 		frame.grid_rowconfigure(5, weight=1)
-		btn_create_files_params = {'widg_text':"Create Access Files",
+		btn_create_files_params = {'widg_text':'Create Access Files',
 							'widg_width':16,
 							'widg_command':self.create_access_files_button_callback,
 							'widg_state':DISABLED,
@@ -639,9 +639,9 @@ class QuantificationGUI:
 	def create_message_frame(self, parent_frame):
 		'''Create a scrollable message frame'''
 
-		frame 						= Frame(parent_frame, borderwidth=1, height=70, bg = "black", colormap = "new")
+		frame 						= Frame(parent_frame, borderwidth=1, height=70, bg = 'black', colormap = 'new')
 
-		frame.pack(fill="both", expand=True)
+		frame.pack(fill='both', expand=True)
 		# ensure a consistent GUI size
 		frame.grid_propagate(False)
 		# implement stretchability
@@ -669,7 +669,7 @@ class QuantificationGUI:
 		'''Triggered when user has pressed the Select LIMS file button'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
 		# clear error msg line in screen, summary text and disable create files button
 		self.clear_screen()
@@ -679,13 +679,13 @@ class QuantificationGUI:
 			limsdir = os.path.normpath(settings.get('Quantification').get('dnaq_dir_lims_file_network'))
 
 			if(args.debug == True):
-				print_debug_message("LIMS file directory: %s" % limsdir)
+				print_debug_message('LIMS file directory: %s' % limsdir)
 
 			# open file dialog and save selection N.B. if path not recognised it opens anyway
-			self.lims_src_plt_grp_filepath = askopenfilename(title  = "Select LIMS plate grouping file", initialdir = limsdir)
+			self.lims_src_plt_grp_filepath = askopenfilename(title  = 'Select LIMS plate grouping file', initialdir = limsdir)
 
 		except Exception as e:
-			self.display_message(True, "ERROR: Exception when attempting to open the network directory for the LIMS file.\nError Message: <%s>" % str(e))
+			self.display_message(True, 'ERROR: Exception when attempting to open the network directory for the LIMS file.\nError Message: <%s>' % str(e))
 			return False
 
 		# update the lable to display the filepath
@@ -693,17 +693,17 @@ class QuantificationGUI:
 
 		if((len(self.lims_src_plt_grp_filepath) > 0) and (os.path.isfile(self.lims_src_plt_grp_filepath))):
 			if(args.debug == True):
-				print_debug_message("File chosen: %s" % self.lims_src_plt_grp_filepath)
+				print_debug_message('File chosen: %s' % self.lims_src_plt_grp_filepath)
 
 			# read LIMS file into memory
 			self.read_Lims_file_and_display_summary()
 
 		else:
 			if(args.debug == True):
-				print_debug_message("No file was selected!")
+				print_debug_message('No file was selected!')
 
 			# red error msg line in screen
-			self.display_message(True, "No file was selected, please try again.")		
+			self.display_message(True, 'No file was selected, please try again.')		
 
 		return
 
@@ -711,7 +711,7 @@ class QuantificationGUI:
 		'''Reads the LIMS plate file into memory and displays the summary to the user'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
 		# read LIMS file into memory
 		self.read_lims_plate_grouping_json_file()
@@ -740,14 +740,14 @@ class QuantificationGUI:
 		'''Checks the network directory for the LIMS plate file, and loads the file if it finds only one'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
 		try:
 			# lims file network directory
 			limsdir = os.path.normpath(settings.get('Quantification').get('dnaq_dir_lims_file_network'))
 
 			if(args.debug == True):
-				print_debug_message("LIMS file directory: %s" % limsdir)
+				print_debug_message('LIMS file directory: %s' % limsdir)
 
 			i_count_lims_files 		= 0
 			s_filename 				= None
@@ -778,7 +778,7 @@ class QuantificationGUI:
 					self.lims_src_plt_grp_filepath = os.path.join(limsdir, s_filename)
 
 					if(args.debug == True):
-						print_debug_message("A single LIMS file was found = <%s>" % self.lims_src_plt_grp_filepath)
+						print_debug_message('A single LIMS file was found = <%s>' % self.lims_src_plt_grp_filepath)
 
 					# update the lable to display the filepath
 					self.lbl_lims_fp.configure(text = self.lims_src_plt_grp_filepath)
@@ -787,7 +787,7 @@ class QuantificationGUI:
 					self.read_Lims_file_and_display_summary()
 
 		except Exception as e:
-			self.display_message(True, "ERROR: Exception checking for lims plate layout files in the network directory.\nError Message: <%s>" % str(e))
+			self.display_message(True, 'ERROR: Exception checking for lims plate layout files in the network directory.\nError Message: <%s>' % str(e))
 			return
 
 		return
@@ -796,57 +796,70 @@ class QuantificationGUI:
 		'''Triggered when user has pressed the Check File button'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
 		# validate that there are enough black plates in the stack
 		if(self.validate_number_of_black_plates_in_stack()):
-			self.display_message(False, "Validated number of black plates in stack, now creating experiment directory, please wait...")
+			self.display_message(False, 'Validated number of black plates in stack, now creating experiment directory, please wait...')
 		else:
 			if(args.debug == True):
-				print_debug_message("Failed to validate number of black plates in stack")
+				print_debug_message('Failed to validate number of black plates in stack')
 			return
 
 		# create expt dir using lims_reference_id
 		if(self.create_quantification_experiment_directory()):
-			self.display_message(False, "Created experiment directory at <%s>, now generating Echo csv files, please wait..." % self.expt_directory)
+			self.display_message(False, 'Created experiment directory at <%s>, now generating Echo csv files, please wait...' % self.s_expt_directory)
 		else:
 			if(args.debug == True):
-				print_debug_message("Failed to create experiment directory")
+				print_debug_message('Failed to create experiment directory')
 			return
+
+		# create initial log message headers
+		self.create_dnaq_log_headers()
 
 		# generate Echo csvs in expt dir
 		if(self.generate_quantification_echo_files()):
-			self.display_message(False, "ECHO csv files created, now generating RunDef file, please wait...")
+			self.display_message(False, 'ECHO csv files created, now generating RunDef file, please wait...')
 		else:
 			if(args.debug == True):
-				print_debug_message("Failed to generate csv files")
+				print_debug_message('Failed to generate csv files')
 			return
+
+		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['-' * 62])
 
 		# generate Access RunDef files
 		if(self.generate_quantification_rundef_files()):
-			self.display_message(False, "RunDef files created in experiment directory, now tidying up, please wait...")
+			self.display_message(False, 'RunDef files created in experiment directory, now tidying up, please wait...')
 		else:
 			if(args.debug == True):
-				print_debug_message("Failed to generate RunDef file")
+				print_debug_message('Failed to generate RunDef file')
 			return
+
+		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['-' * 62])
 
   		# copy the LIMS file and place it in the experiment directory
 		try:
 			lims_src_plt_grp_filename 	= os.path.basename(self.lims_src_plt_grp_filepath)
-			new_expt_filepath 			= os.path.join(self.expt_directory, lims_src_plt_grp_filename)
+			new_expt_filepath 			= os.path.join(self.s_expt_directory, lims_src_plt_grp_filename)
 
 			shutil.copyfile(self.lims_src_plt_grp_filepath, new_expt_filepath)
-			self.display_message(False, "The RunDef file <%s> should now be in the Tempo Inbox and ready to start from Tempo.\nPlease leave this screen open because it will monitor the run." 
-										% self.dnaq_standards_rundef_expt_filename)
+
+			# record log message
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['LIMS plate file copied to experiment directory at : %s' % new_expt_filepath, '-' * 62])
+
+			self.display_message(False, 'RunDef file <%s> moved to the Tempo Inbox.' % self.s_dnaq_standards_rundef_expt_filename)
 		except Exception as e:
-			self.display_message(True, "ERROR: Exception copying the LIMS plate grouping file into the experiment directory.\nError Message: <%s>" % str(e))
+			self.display_message(True, 'ERROR: Exception copying the LIMS plate grouping file into the experiment directory.\nError Message: <%s>' % str(e))
 			return
 
 		# dna quantification standards plate creation and read is done with a runset that has two runs
-		self.current_rundef_identifier = {'rundef_identifier':'dnaq_process_standards', 'filename':self.dnaq_standards_rundef_expt_filename}
+		self.current_rundef_identifier = {'rundef_identifier':'dnaq_process_standards', 'filename':self.s_dnaq_standards_rundef_expt_filename}
 
 		if(args.debug == True):
-			print_debug_message("Current RunDef stage is <%s>" % self.current_rundef_identifier['rundef_identifier'])
+			print_debug_message('Current RunDef stage is <%s>' % self.current_rundef_identifier['rundef_identifier'])
+
+		# record log message
+		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Starting to monitor the Tempo outbox and error directories'])
 
 		# monitor the rundef and extract the RunIds
 		self.monitor_tempo_directories_for_processed_rundef_file()
@@ -867,14 +880,14 @@ class QuantificationGUI:
 			
 		# # the rundef file has been processed by Tempo into the outbox, and we should now have RunIDs for the current RunDef
 		# if(args.debug == True):
-		# 	print_debug_message("Run identifiers:")
+		# 	print_debug_message('Run identifiers:')
 		# 	pprint(self.current_run_identifiers)
 
 		# # monitor each run within the rundef (runset)
 		# for self.current_run_identifier in self.current_run_identifiers:
 
 		# 	if(args.debug == True):
-		# 		print_debug_message("Current Run identifier:")
+		# 		print_debug_message('Current Run identifier:')
 		# 		pprint(self.current_run_identifier)
 
 		# 	# determine the run directory path
@@ -883,11 +896,11 @@ class QuantificationGUI:
 		# 		current_run_filename  	= 'Run_' + str(self.current_run_identifier['run_id_num']) + '.run'
 
 		# 		if(args.debug == True):
-		# 			print_debug_message("Current Run directory = <%s>" % current_run_dir)
-		# 			print_debug_message("Current Run filename  = <%s>" % current_run_filename)
+		# 			print_debug_message('Current Run directory = <%s>' % current_run_dir)
+		# 			print_debug_message('Current Run filename  = <%s>' % current_run_filename)
 
 		# 	except Exception as e:
-		# 		self.display_message(True, "ERROR: Exception determining the current run directory.\nError Message: <%s>" % str(e))
+		# 		self.display_message(True, 'ERROR: Exception determining the current run directory.\nError Message: <%s>' % str(e))
 		# 		return
 
 		# 	# monitor the run state
@@ -896,29 +909,29 @@ class QuantificationGUI:
 
 		# 	if(self.is_run_completed_successfully == True):
 		# 		if(args.debug == True):
-		# 			print_debug_message("Run <%s> completed successfully, now performing post-run actions" % str(self.current_run_identifier['run_id_num']))
+		# 			print_debug_message('Run <%s> completed successfully, now performing post-run actions' % str(self.current_run_identifier['run_id_num']))
 
 		# 		if(not self.perform_post_run_actions()):
-		# 			self.display_message(True, "ERROR: Run number <%s> post-run actions failed. Cannot continue monitoring." % str(self.current_run_identifier['run_id_num']))
+		# 			self.display_message(True, 'ERROR: Run number <%s> post-run actions failed. Cannot continue monitoring.' % str(self.current_run_identifier['run_id_num']))
 		# 			self.abort_experiment()
 		# 			return
 		# 	elif(self.is_run_completed_successfully == False):
 		# 		# run was stopped prematurely or there was an exception, abort the experiment
 		# 		if(args.debug == True):
-		# 			print_debug_message("Run <%s> was stopped prematurely by Tempo" % str(self.current_run_identifier['run_id_num']))
+		# 			print_debug_message('Run <%s> was stopped prematurely by Tempo' % str(self.current_run_identifier['run_id_num']))
 
-		# 		self.display_message(True, "ERROR: Run number <%s> was Stopped by Tempo. Cannot continue monitoring." % str(self.current_run_identifier['run_id_num']))
+		# 		self.display_message(True, 'ERROR: Run number <%s> was Stopped by Tempo. Cannot continue monitoring.' % str(self.current_run_identifier['run_id_num']))
 		# 		self.abort_experiment()
 		# 		return
 
 		# 	else:
 		# 		# unexpected result
-		# 		self.display_message(True, "ERROR: Run <%s> success flag was None, unexpected result. Cannot continue." % str(self.current_run_identifier['run_id_num']))
+		# 		self.display_message(True, 'ERROR: Run <%s> success flag was None, unexpected result. Cannot continue.' % str(self.current_run_identifier['run_id_num']))
 		# 		self.abort_experiment()
 		# 		return
 
 		# # if we reach here the rundef has completed and we can clean up		
-		# self.display_message(False, "Monitoring of RunDef <%s> has completed" % self.current_rundef_identifier['rundef_identifier'])
+		# self.display_message(False, 'Monitoring of RunDef <%s> has completed' % self.current_rundef_identifier['rundef_identifier'])
 
 		# Continue to monitor the tempo outbox and error directories in the background whilst Tempo runs.
 		# Look for a RunDef in these directories matching the RunDef 3 name (will have timestamp prefix).
@@ -926,7 +939,7 @@ class QuantificationGUI:
 		# If error pop up GUI to say errors, then tidy up and close. [How to continue or re-start from this?]
 
 		# If outbox file matches rundef (with prefix timestamp) then look for RunIDs in the rundef.
-		# self.dnaq_dna_srcs_rundef_expt_filename 	= "dnaq_dna_srcs_%s.rundef" % self.data_summary['lims_reference_id']
+		# self.s_dnaq_dna_srcs_rundef_expt_filename 	= 'dnaq_dna_srcs_%s.rundef' % self.data_summary['lims_reference_id']
 		# Now monitor /Run1/Run_3.run for <RunState> changes.
 
 		# Once Run 3 <RunState> is 'Complete'
@@ -961,6 +974,47 @@ class QuantificationGUI:
 
 		# return
 
+	def create_dnaq_log_headers(self):
+		'''Create the experiment log file and add the initial headers'''
+
+		try:
+			self.expt_logs_directory = os.path.join(self.s_expt_directory, 'logs')
+			self.expt_log_filename 	 = settings.get('Quantification').get('dnaq_fn_log')
+			log_msg_list  = []
+			log_msg_list.append('DNA Quantification Log')
+			log_msg_list.append('-' * 62)
+			log_msg_list.append('LIMS Reference ID: %s' % self.data_summary['lims_reference_id'])
+			log_msg_list.append('-' * 62)
+			log_msg_list.append('Standards Type: %s' % self.data_summary.get('standards_type'))
+			log_msg_list.append('Standards File Version: %s' % str(quant_standards[self.data_summary.get('standards_type')]['Version']['version_number']))
+			log_msg_list.append('-' * 62)
+			log_msg_list.append('Number of DNA source plates: %s' % self.data_summary.get('num_src_plts'))
+			log_msg_list.append('DNA source plate list:')
+			
+			i_plate_index 			= self.data_summary.get('num_src_plts')
+			i_src_plt_stack_posn 	= settings.get('Common').get('src_plts_initial_stk_posn') + i_plate_index - 1
+			for plate in self.data_summary.get('plts_dict'):
+				s_plt_idx 				= str(i_plate_index)
+				s_src_plt_stack_posn 	= str(i_src_plt_stack_posn)
+
+				s_curr_plt_bc 			= self.data_summary.get('plts_dict').get(s_plt_idx).get('barcode')
+				s_curr_plt_num_samples 	= self.data_summary.get('plts_dict').get(s_plt_idx).get('count_sample_wells')
+				s_curr_plt_num_ctrls   	= self.data_summary.get('plts_dict').get(s_plt_idx).get('count_control_wells')
+
+				log_msg_list.append('Stack Posn: %s, Barcode: %s, Num Samples: %s, Num Controls: %s' % (s_src_plt_stack_posn, s_curr_plt_bc, s_curr_plt_num_samples, s_curr_plt_num_ctrls))
+
+				i_plate_index 			-= 1
+				i_src_plt_stack_posn 	-= 1
+
+			log_msg_list.append('-' * 62)
+
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, log_msg_list)
+		except Exception as e:
+			self.display_message(True, 'ERROR: Exception when attempting to create the log file <%s> in the experiment directory.\nError Message: <%s>' % (s_log_filename, str(e)))
+			return
+
+		return
+
 	def monitor_tempo_directories_for_processed_rundef_file(self):
 		'''Monitor the Tempo outbox and error directories for a processed RunDef file'''
 
@@ -983,7 +1037,7 @@ class QuantificationGUI:
 					self.extract_rundef_file_error_information(rundef_file)
 					return
 		
-		self.display_message(False, "Waiting for Tempo to process the RunDef file...")
+		self.display_message(False, 'Waiting for Tempo to process the RunDef file...')
 
 		# after(delay_ms, callback=None, *args)
 		# e.g. after(100, myfunction, arg1, arg2, arg3, ...)
@@ -991,75 +1045,82 @@ class QuantificationGUI:
 		# with brackets after the function it runs the function and then uses the result in the after, i.e. recursion happens here
 		self.root.after(2000, self.monitor_tempo_directories_for_processed_rundef_file)
 
-	def check_rundef_file_and_extract_run_ids(self, rundef_file):
+	def check_rundef_file_and_extract_run_ids(self, s_rundef_file):
 		'''Extracts RunIDs from the RunDef file'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
 		dir_outbox 	= settings.get('Common').get('dir_tempo_rundef_outbox')
 
-		self.display_message(False, "Tempo has processed the RunDef file into the outbox dir: <%s>, now attempting to verify file and parse RunIDs" % rundef_file)
+		self.display_message(False, 'Tempo has processed the RunDef file into the outbox dir: <%s>, now attempting to verify file and parse RunIDs' % s_rundef_file)
+
+		log_msg_list = []
+		log_msg_list.append('Tempo processed RunDef file to Outbox: %s' % s_rundef_file)
 
 		# parse RunDef (XML format)file to identify run ids
-		run_ids = []
+		run_ids_list = []
 		try:
-			rundef_filepath = os.path.join(settings.get('Common').get('dir_tempo_rundef_outbox'), rundef_file)
-			tree = xml.etree.ElementTree.parse(rundef_filepath).getroot()
+			s_rundef_filepath = os.path.join(settings.get('Common').get('dir_tempo_rundef_outbox'), s_rundef_file)
+			tree = xml.etree.ElementTree.parse(s_rundef_filepath).getroot()
 
 			# locate Run nodes within root (may be more than one)
 			for run_node in tree.findall('Run'):
 
 				# extract information from the XML
-				run_id 			= run_node.get('RunID')
-				run_name 		= run_node.get('RunName')
-				ref_id_node		= run_node.find('./Definition/ReferenceID')
-				run_ref 		= ref_id_node.text # run reference id contains two parts i.e. lims_id;stage_number
-				run_ref_split 	= run_ref.split(';')
-				run_ref_id 		= run_ref_split[0]
-				run_stage_num  	= run_ref_split[1]
+				s_run_id 			= run_node.get('RunID')
+				s_run_name 			= run_node.get('RunName')
+				ref_id_node			= run_node.find('./Definition/ReferenceID')
+				s_run_ref 			= ref_id_node.text # run reference id contains two parts i.e. lims_id;stage_number
+				run_ref_split_list 	= s_run_ref.split(';')
+				s_run_ref_id 		= run_ref_split_list[0]
+				s_run_stage_num  	= run_ref_split_list[1]
 
 				if(args.debug == True):
-				    print_debug_message("RunID = %s" % run_id)
-				    print_debug_message("RunName = %s" % run_name)
-				    print_debug_message("Run LIMS ref id = %s" % run_ref_id)
-				    print_debug_message("Run stage number = %s" % run_stage_num)
+				    print_debug_message('RunID = %s' % s_run_id)
+				    print_debug_message('RunName = %s' % s_run_name)
+				    print_debug_message('Run LIMS ref id = %s' % s_run_ref_id)
+				    print_debug_message('Run stage number = %s' % s_run_stage_num)
 
 				# verify this file is for this runset
-				if(not run_ref_id ==self.data_summary['lims_reference_id']):
-					self.display_message(True, "ERROR: Run ReferenceID <%s> does not match expected when attempting to parse the RunDef file to extract RunIDs" % run_ref_id)
+				if(not s_run_ref_id ==self.data_summary['lims_reference_id']):
+					self.display_message(True, 'ERROR: Run ReferenceID <%s> does not match expected when attempting to parse the RunDef file to extract RunIDs' % s_run_ref_id)
 					return
 
 				# verify that the run id extracted is a number
-				if(run_id == None or run_id == '0'):
-					self.display_message(True, "ERROR: RunID zero or null when attempting to parse the RunDef file to extract RunIDs")
+				if(s_run_id == None or s_run_id == '0'):
+					self.display_message(True, 'ERROR: RunID zero or null when attempting to parse the RunDef file to extract RunIDs')
 					return
 				else:
-					run_ids.append(run_id)
-
+					run_ids_list.append(s_run_id)
+					log_msg_list.append('Identified RunID: %s' % s_run_id)
+					
 		except Exception as e:
-			self.display_message(True, "ERROR: Exception when attempting to parse the RunDef file to extract RunIDs.\nError Message: <%s>" % str(e))
+			self.display_message(True, 'ERROR: Exception when attempting to parse the RunDef file to extract RunIDs.\nError Message: <%s>' % str(e))
 			return
+
+		# write to log
+		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, log_msg_list)
 
 		# set the run processing identifiers according to the current_rundef_identifier 
 		self.current_run_identifiers = []
 		if self.current_rundef_identifier['rundef_identifier'] == 'dnaq_process_standards':
 			# expecting two run ids
-			if(len(run_ids) == 2):
-				self.current_run_identifiers.append({'run_identifier_name' : 'dnaq_process_standards_run_1', 'run_id_num' : run_ids[0]})
-				self.current_run_identifiers.append({'run_identifier_name' : 'dnaq_process_standards_run_2', 'run_id_num' : run_ids[1]})
+			if(len(run_ids_list) == 2):
+				self.current_run_identifiers.append({'run_identifier_name' : 'dnaq_process_standards_run_1', 'run_id_num' : run_ids_list[0]})
+				self.current_run_identifiers.append({'run_identifier_name' : 'dnaq_process_standards_run_2', 'run_id_num' : run_ids_list[1]})
 			else:
-				self.display_message(True, "ERROR: Unexpected number of RunIDs found in Standards RunDef file, found <%s> when expecting 2. Cannot continue." % run_ids.len)
+				self.display_message(True, 'ERROR: Unexpected number of RunIDs found in Standards RunDef file, found <%s> when expecting 2. Cannot continue.' % run_ids_list.len)
 				return
 		elif self.current_rundef_identifier['rundef_identifier'] == 'dnaq_process_dna_sources':
 			# expecting one run id
-			if(len(run_ids) == 1):
-				self.current_run_identifiers.append({'run_identifier_name' : 'dnaq_process_dna_sources_run_1', 'run_id_num' : run_ids[0]})
+			if(len(run_ids_list) == 1):
+				self.current_run_identifiers.append({'run_identifier_name' : 'dnaq_process_dna_sources_run_1', 'run_id_num' : run_ids_list[0]})
 			else:
-				self.display_message(True, "ERROR: Unexpected number of RunIDs found in DNA Sources RunDef file, found <%s> when expecting 1. Cannot continue." % run_ids.len)
+				self.display_message(True, 'ERROR: Unexpected number of RunIDs found in DNA Sources RunDef file, found <%s> when expecting 1. Cannot continue.' % run_ids_list.len)
 				return
 		else:
-			self.display_message(True, "ERROR: Unrecognised current rundef identifier <%s>. Cannot continue." % self.current_rundef_identifier['rundef_identifier'])
+			self.display_message(True, 'ERROR: Unrecognised current rundef identifier <%s>. Cannot continue.' % self.current_rundef_identifier['rundef_identifier'])
 			return
 
 		self.monitor_tempo_rundef_run(0)
@@ -1069,12 +1130,12 @@ class QuantificationGUI:
 		'''Called if the RunDef file is located in the Tempo error directory'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
 		dir_error 	= settings.get('Common').get('dir_tempo_rundef_error')
 
 		# If Tempo detects an error with the RunDef file it moves it to the /error directory (without renaming) and creates a .err file matching the RunDef file name
-		self.display_message(True, "Tempo detected a problem with this RunDef file. See the Tempo error directory <%s> for more information" % dir_error)
+		self.display_message(True, 'Tempo detected a problem with this RunDef file. See the Tempo error directory <%s> for more information' % dir_error)
 
 		#TODO: extract information from rundef .err file and display to user
 
@@ -1084,7 +1145,7 @@ class QuantificationGUI:
 		'''Process the run with the specified index from the RunDef'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
 		self.current_run_identifier = self.current_run_identifiers[run_index]
 
@@ -1094,12 +1155,14 @@ class QuantificationGUI:
 			current_run_filename  	= 'Run_' + str(self.current_run_identifier['run_id_num']) + '.run'
 
 			if(args.debug == True):
-				print_debug_message("Current Run directory = <%s>" % current_run_dir)
-				print_debug_message("Current Run filename  = <%s>" % current_run_filename)
+				print_debug_message('Current Run directory = <%s>' % current_run_dir)
+				print_debug_message('Current Run filename  = <%s>' % current_run_filename)
 
 		except Exception as e:
-			self.display_message(True, "ERROR: Exception determining the current run directory.\nError Message: <%s>" % str(e))
+			self.display_message(True, 'ERROR: Exception determining the current run directory.\nError Message: <%s>' % str(e))
 			return
+
+		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Monitoring Run ID: %s' % str(self.current_run_identifier['run_id_num'])])
 
 		# monitor the run state
 		self.monitor_tempo_run_directory(current_run_dir, current_run_filename)
@@ -1123,7 +1186,7 @@ class QuantificationGUI:
 					current_runstate 	= runstate_node.text
 
 		except Exception as e:
-			self.display_message(True, "ERROR: Exception when attempting to parse the .run file to extract RunState.\nError Message: <%s>" % str(e))
+			self.display_message(True, 'ERROR: Exception when attempting to parse the .run file to extract RunState.\nError Message: <%s>' % str(e))
 			return False
 
 		# Pending 	– protocol execution has not yet started
@@ -1138,18 +1201,18 @@ class QuantificationGUI:
 		if(not current_runstate is None):
 			if(current_runstate == 'Complete'):
 				if(args.debug == True):
-					print_debug_message("RunState is Complete")
+					print_debug_message('RunState is Complete')
 				self.perform_post_run_actions()
 				return
 			elif(current_runstate == 'Stopped'):
 				if(args.debug == True):
-					print_debug_message("RunState is Stopped")
+					print_debug_message('RunState is Stopped')
 				self.perform_run_stopped_actions()
 				return
 			else:
-				self.display_message(False, "Waiting for Tempo to update the Run file <%s>, current state is <%s>" % (run_filename, current_runstate))
+				self.display_message(False, 'Waiting for Tempo to update the Run file <%s>, current state is <%s>' % (run_filename, current_runstate))
 		else:
-			self.display_message(False, "Waiting for Tempo to create the Run file <%s>" % run_filename)
+			self.display_message(False, 'Waiting for Tempo to create the Run file <%s>' % run_filename)
 
 		self.root.after(2000, self.monitor_tempo_run_directory, run_dir, run_filename)
 
@@ -1157,8 +1220,8 @@ class QuantificationGUI:
 		'''Perform post-run actions'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
-			print_debug_message("Performing post-run actions for Run identifier <%s> with RunID <%s>" % (self.current_run_identifier['run_identifier_name'], str(self.current_run_identifier['run_id_num'])))
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
+			print_debug_message('Performing post-run actions for Run identifier <%s> with RunID <%s>' % (self.current_run_identifier['run_identifier_name'], str(self.current_run_identifier['run_id_num'])))
 
 		# perform post run actions by identifiers
 		if(self.current_run_identifier['run_identifier_name'] == 'dnaq_process_standards_run_1'):
@@ -1172,7 +1235,7 @@ class QuantificationGUI:
 			# copy across run directory to experiment directory
 			# Use the Run_1/Plates1.xml file to map the plate ids and names to our DNA plate barcodes ] CHECK: will or will not the ids match to those in Run 3 as seperate rundef?!
 			
-			self.display_message(False, "Post-Run actions for dnaq_process_standards_run_1 completed")
+			self.display_message(False, 'Post-Run actions for dnaq_process_standards_run_1 completed')
 
 			# process the second Run in the RunDef to transfer from Standards to black plate
 			self.monitor_tempo_rundef_run(1)
@@ -1209,15 +1272,15 @@ class QuantificationGUI:
 			# 			copy Run 1 and 2 Tempo logs directories into expt/%reference_id% directory and then rename the expt/%reference_id% directory as _aborted_%timestamp%).
 
 
-			self.display_message(False, "Post-Run actions for dnaq_process_standards_run_2 completed")
+			self.display_message(False, 'Post-Run actions for dnaq_process_standards_run_2 completed')
 
 		elif(self.current_run_identifier['run_identifier_name'] == 'dnaq_process_dna_sources_run_1'):
 			# do stuff specific to this run
-			self.display_message(False, "Post-Run actions for dnaq_process_dna_sources_run_1 completed")
+			self.display_message(False, 'Post-Run actions for dnaq_process_dna_sources_run_1 completed')
 
 		else:
 			# not recognised error
-			self.display_message(True, "ERROR: Unrecognised run identifier <%s> when attempting to perform post-Run actions. Cannot continue." % self.current_run_identifier['run_identifier_name'])
+			self.display_message(True, 'ERROR: Unrecognised run identifier <%s> when attempting to perform post-Run actions. Cannot continue.' % self.current_run_identifier['run_identifier_name'])
 			
 		return
 
@@ -1225,30 +1288,30 @@ class QuantificationGUI:
 		'''Perform any actions required after Tempo has Stopped the Run'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
-			print_debug_message("Tempo has Stopped the Run with identifier <%s> and RunID <%s>" % (self.current_run_identifier['run_identifier_name'], str(self.current_run_identifier['run_id_num'])))
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
+			print_debug_message('Tempo has Stopped the Run with identifier <%s> and RunID <%s>' % (self.current_run_identifier['run_identifier_name'], str(self.current_run_identifier['run_id_num'])))
 
-		self.display_message(True, "Tempo has Stopped RunID <%s>, tidying up" % str(self.current_run_identifier['run_id_num']))
+		self.display_message(True, 'Tempo has Stopped RunID <%s>, tidying up' % str(self.current_run_identifier['run_id_num']))
 
 		# perform post run actions by identifiers
 		if(self.current_run_identifier['run_identifier_name'] == 'dnaq_process_standards_run_1'):
 			# do stuff specific to this run
 
-			self.display_message(False, "Stopped Run actions for dnaq_process_standards_run_1 completed")
+			self.display_message(False, 'Stopped Run actions for dnaq_process_standards_run_1 completed')
 
 		elif(self.current_run_identifier['run_identifier_name'] == 'dnaq_process_standards_run_2'):
 			# do stuff specific to this run
 
-			self.display_message(False, "Stopped Run actions for dnaq_process_standards_run_2 completed")
+			self.display_message(False, 'Stopped Run actions for dnaq_process_standards_run_2 completed')
 
 		elif(self.current_run_identifier['run_identifier_name'] == 'dnaq_process_dna_sources_run_1'):
 			# do stuff specific to this run
 
-			self.display_message(False, "Stopped Run actions for dnaq_process_dna_sources_run_1 completed")
+			self.display_message(False, 'Stopped Run actions for dnaq_process_dna_sources_run_1 completed')
 
 		else:
 			# not recognised error
-			self.display_message(True, "ERROR: Unrecognised run identifier <%s> when attempting to perform Stopped Run actions. Cannot continue." % self.current_run_identifier['run_identifier_name'])
+			self.display_message(True, 'ERROR: Unrecognised run identifier <%s> when attempting to perform Stopped Run actions. Cannot continue.' % self.current_run_identifier['run_identifier_name'])
 			
 		return
 
@@ -1256,19 +1319,19 @@ class QuantificationGUI:
 		'''Abort the experiment and tidy up files and directories'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
 		# rename and move the experiment directory to the experiment error directory
 		try:
-			s_ts 							= time.strftime("%Y%m%d_%H%M%S_")
+			s_ts 							= get_current_timestamp_as_string() + '_'
 			new_dir_name 					= s_ts + self.data_summary['lims_reference_id']
 			dest_dir  						= os.path.join(settings.get('Common').get('dir_expt_error'), new_dir_name)
-			move_and_rename_directory(self.expt_directory, dest_dir) 
+			move_and_rename_directory(self.s_expt_directory, dest_dir) 
 		except Exception as ex:
-			self.display_message(True, "ERROR: Exception when aborting the experiment. Error Message: <%s>" % str(ex))
+			self.display_message(True, 'ERROR: Exception when aborting the experiment. Error Message: <%s>' % str(ex))
 			return
 
-		self.display_message(False, "Experiment aborted and directory moved to %s" % dest_dir)
+		self.display_message(False, 'Experiment aborted and directory moved to %s' % dest_dir)
 
 		return
 
@@ -1276,15 +1339,15 @@ class QuantificationGUI:
 		'''Display message on the screen'''
 
 		if(args.debug == True):
-			print_debug_message("Displaying message: %s" % message)
+			print_debug_message('Displaying message: %s' % message)
 
 		# set up tags
 		self.txt_msg_panel.tag_configure('msg_error', 	 font=font_arial_normal, foreground=colour_red)
 		self.txt_msg_panel.tag_configure('msg_standard', font=font_arial_normal, foreground=colour_green)
 
 		# create a timestamp
-		s_ts                              	= time.strftime("%H:%M:%S  ")
-		self.message_queue.append({'is_error' : is_error, 'msg' : s_ts + message + '\n'})
+		s_time = get_current_time_as_string() + '  '
+		self.message_queue.append({'is_error' : is_error, 'msg' : s_time + message + '\n'})
 		if(len(self.message_queue) > self.message_queue_size):
 			self.message_queue.popleft() # remove oldest message
 
@@ -1302,8 +1365,8 @@ class QuantificationGUI:
 		'''Reads the data from a json file'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
-			print_debug_message("LIMS filepath = <%s>" % self.lims_src_plt_grp_filepath)
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
+			print_debug_message('LIMS filepath = <%s>' % self.lims_src_plt_grp_filepath)
 
 		# read the file N.B. the with clause closes the file as soon as we are out of the with context.
 		# don't print or do anything in the with open clause as that keeps the file open longer
@@ -1311,7 +1374,7 @@ class QuantificationGUI:
 			self.data_lims_src_plt_grp = json.load(data_file)
 		
 		if(args.debug == True):
-			print_debug_message("LIMS file data:")
+			print_debug_message('LIMS file data:')
 			print_debug_message('-' * 80)
 			pprint(self.data_lims_src_plt_grp)
 			print_debug_message('-' * 80)
@@ -1329,16 +1392,16 @@ class QuantificationGUI:
 		'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
 		# validation check: there should be certain fields in the json file
 		expected_fields = ['LIMS_PLATE_GROUP_ID', 'PLATES']
 		for expected_field in expected_fields:
 			if self.data_lims_src_plt_grp.has_key(expected_field):
 				if(args.debug == True):
-					print_debug_message("Field located : %s" % expected_field)
+					print_debug_message('Field located : %s' % expected_field)
 			else:
-				self.display_message(True, "ERROR: Key field <%s> missing from this file. Cannot continue." % expected_field)
+				self.display_message(True, 'ERROR: Key field <%s> missing from this file. Cannot continue.' % expected_field)
 				return False
 
 		self.data_summary['lims_reference_id'] 	= self.data_lims_src_plt_grp['LIMS_PLATE_GROUP_ID']
@@ -1346,12 +1409,12 @@ class QuantificationGUI:
 		self.data_summary['plts_dict'] 			= {}
 
 		if(args.debug == True):
-			print_debug_message("Run ID           = %s" % self.data_summary['lims_reference_id'])
-			print_debug_message("Num plates found = %s" % self.data_summary['num_src_plts'])
+			print_debug_message('Run ID           = %s' % self.data_summary['lims_reference_id'])
+			print_debug_message('Num plates found = %s' % self.data_summary['num_src_plts'])
 
 		# validation check: there should be at least one plate
 		if(self.data_summary['num_src_plts'] == 0):
-			self.display_message(True, "ERROR: Unable to identify any plates in this file. Cannot continue.")
+			self.display_message(True, 'ERROR: Unable to identify any plates in this file. Cannot continue.')
 			return False
 
 		# set black plates required (n + 1 for standards intermediate plate)
@@ -1372,7 +1435,7 @@ class QuantificationGUI:
 			self.data_summary['plts_dict'][s_plt_idx]['standards_params'] 		= self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['STANDARDS_PARAMS']
 
 			if self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['STANDARDS_PARAMS'] not in valid_quant_standards:
-				self.display_message(True, "ERROR: plate with barcode <%s> has a standards type of <%s> which is not currently supported. Cannot continue." % (self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['BARCODE'], self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['STANDARDS_PARAMS']))
+				self.display_message(True, 'ERROR: plate with barcode <%s> has a standards type of <%s> which is not currently supported. Cannot continue.' % (self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['BARCODE'], self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['STANDARDS_PARAMS']))
 				return False
 
 			# count number of types of standards plates, used to check not got a mixed set
@@ -1389,10 +1452,10 @@ class QuantificationGUI:
 			well_index 					= 0
 
 			while well_index < len(curr_wells):
-				if(curr_wells[well_index]['ROLE'] == "SAMPLE"):
+				if(curr_wells[well_index]['ROLE'] == 'SAMPLE'):
 					count_sample_wells 	+= 1
 
-				if(curr_wells[well_index]['ROLE'] == "CONTROL"):
+				if(curr_wells[well_index]['ROLE'] == 'CONTROL'):
 					count_control_wells += 1
 
 				well_index 				+= 1
@@ -1404,13 +1467,13 @@ class QuantificationGUI:
 
 		# validation check: there is only one type of standards plate required, if more than one it's an error
 		if((len(standards_types) == 0) or (len(standards_types) > 1)):
-			self.display_message(True, "ERROR: this group of plates contains %s types of standards plate requirements, which is not currently supported. Cannot continue." % len(standards_types))
+			self.display_message(True, 'ERROR: this group of plates contains %s types of standards plate requirements, which is not currently supported. Cannot continue.' % len(standards_types))
 			return False
 		else:
 			# fetch first and only key and store as the standards type for the group of plates
 			self.data_summary['standards_type'] = standards_types.keys()[0]
 
-		self.display_message(False, "LIMS file successfully validated. Plates found: %s\nPlease check and indicate how many black plates are in stack 4 and press 'Create Access Files'" % str(self.data_summary['num_src_plts']))
+		self.display_message(False, 'LIMS file successfully validated. Plates found: %s. Please check and indicate how many black plates are in stack 4 and press \'Create Access Files\'' % str(self.data_summary['num_src_plts']))
 
 		if(args.debug == True):
 			print_debug_message(pprint(self.data_summary))
@@ -1425,7 +1488,7 @@ class QuantificationGUI:
 		'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
 		# define tags for formatting text
 		self.txt_summary.tag_configure('tag_title', font=font_arial_large_bold, foreground=colour_green, relief='raised',justify='center', underline='True')
@@ -1433,22 +1496,22 @@ class QuantificationGUI:
 		self.txt_summary.tag_configure('tag_bg_grey', background=colour_light_grey)
 
 		# insert text for summary
-		self.txt_summary.insert('1.0', "Summary of File\n", ('tag_title'))
+		self.txt_summary.insert('1.0', 'Summary of File\n', ('tag_title'))
 		
-		self.txt_summary.insert(END, "LIMS plate grouping ID \t\t\t: ")
-		self.txt_summary.insert(END, "%s\n" % self.data_summary.get('lims_reference_id'), ('tag_hl'))
+		self.txt_summary.insert(END, 'LIMS Reference ID \t\t\t: ')
+		self.txt_summary.insert(END, '%s\n' % self.data_summary.get('lims_reference_id'), ('tag_hl'))
 		
-		self.txt_summary.insert(END, "Standards set \t\t\t: ")
-		std_version_num = str(quant_standards[self.data_summary.get('standards_type')]['Version']['version_number'])
-		self.txt_summary.insert(END, "%s  (version: %s)\n" % (self.data_summary.get('standards_type'), std_version_num), ('tag_hl'))
-		
+		self.txt_summary.insert(END, 'Standards set \t\t\t: ')
+		s_std_version_num = str(quant_standards[self.data_summary.get('standards_type')]['Version']['version_number'])
+		self.txt_summary.insert(END, '%s  (version: %s)\n' % (self.data_summary.get('standards_type'), s_std_version_num), ('tag_hl'))
+
 		# TODO: add library prep set details 
-		# self.txt_summary.insert(END, "Library prep set \t\t: ")
+		# self.txt_summary.insert(END, 'Library prep set \t\t: ')
 		# lib_prep_version_num = str(lib_prep_standards[self.data_summary.get('lib_prep_type')]['Version']['version_number'])
-		# self.txt_summary.insert(END, "%s  (version: %s)\n" % (self.data_summary.get('lib_prep_type'), lib_prep_version_num), ('tag_hl'))
+		# self.txt_summary.insert(END, '%s  (version: %s)\n' % (self.data_summary.get('lib_prep_type'), lib_prep_version_num), ('tag_hl'))
 		
-		self.txt_summary.insert(END, "Num DNA source plates \t\t\t: ")
-		self.txt_summary.insert(END, "%s\n\n" % self.data_summary.get('num_src_plts'), ('tag_hl'))
+		self.txt_summary.insert(END, 'Num DNA source plates \t\t\t: ')
+		self.txt_summary.insert(END, '%s\n\n' % self.data_summary.get('num_src_plts'), ('tag_hl'))
 
 		# insert a row for each plate, displaying in reverse (stack order)
 		i_plate_index 			= self.data_summary.get('num_src_plts')
@@ -1466,12 +1529,17 @@ class QuantificationGUI:
 				bg_tags = ('tag_bg_grey')
 				hl_tags = ('tag_bg_grey', 'tag_hl')
 
-			self.txt_summary.insert(END, "[Stk Posn: %s ] \tBarcode \t: " % s_src_plt_stack_posn, bg_tags)
-			self.txt_summary.insert(END, "%s" % self.data_summary.get('plts_dict').get(s_plt_idx).get('barcode'), hl_tags)
-			self.txt_summary.insert(END, "\t\tNum Samples\t: ", bg_tags)
-			self.txt_summary.insert(END, "%s" % self.data_summary.get('plts_dict').get(s_plt_idx).get('count_sample_wells'), hl_tags)
-			self.txt_summary.insert(END, "\t\tNum Controls\t: ", bg_tags)
-			self.txt_summary.insert(END, "%s\n" % self.data_summary.get('plts_dict').get(s_plt_idx).get('count_control_wells'), hl_tags)
+			s_curr_plt_bc 			= self.data_summary.get('plts_dict').get(s_plt_idx).get('barcode')
+			s_curr_plt_num_samples 	= self.data_summary.get('plts_dict').get(s_plt_idx).get('count_sample_wells')
+			s_curr_plt_num_ctrls   	= self.data_summary.get('plts_dict').get(s_plt_idx).get('count_control_wells')
+
+			self.txt_summary.insert(END, '[Stk Posn: %s ] \tBarcode \t: ' % s_src_plt_stack_posn, bg_tags)
+			self.txt_summary.insert(END, '%s' % s_curr_plt_bc, hl_tags)
+			self.txt_summary.insert(END, '\t\tNum Samples\t: ', bg_tags)
+			self.txt_summary.insert(END, '%s' % s_curr_plt_num_samples, hl_tags)
+			self.txt_summary.insert(END, '\t\tNum Controls\t: ', bg_tags)
+			self.txt_summary.insert(END, '%s\n' % s_curr_plt_num_ctrls, hl_tags)
+
 			i_plate_index 			-= 1
 			i_src_plt_stack_posn 	-= 1
 
@@ -1484,7 +1552,7 @@ class QuantificationGUI:
 		'''Clears the various GUI widgets'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
 		# clear the filepath 
 		self.lbl_lims_fp.configure(text = "")
@@ -1494,8 +1562,8 @@ class QuantificationGUI:
 		self.txt_msg_panel.delete('1.0', END)
 		self.message_queue = deque([])
 
-		self.txt_summary.insert('1.0', "")
-		self.txt_msg_panel.insert('1.0', "")
+		self.txt_summary.insert('1.0', '')
+		self.txt_msg_panel.insert('1.0', '')
 
 		# clear black plate reqd field and set combo back to zero
 		self.var_num_blk_plts_reqd.set(0)
@@ -1510,30 +1578,30 @@ class QuantificationGUI:
 		'''Validate that the user has indicated that there are enough black plates in the stack'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
-			print_debug_message("Num plates required = %s" % str(self.var_num_blk_plts_reqd.get()))
-			print_debug_message("Num plates in stack = %s" % str(self.num_blk_plates_deck.get()))
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
+			print_debug_message('Num plates required = %s' % str(self.var_num_blk_plts_reqd.get()))
+			print_debug_message('Num plates in stack = %s' % str(self.num_blk_plates_deck.get()))
 
 		# compare number of plates required to number user has indicated they've loaded (to force them to think about it and check stack)
 		if(self.var_num_blk_plts_reqd.get() == 0):
 			# error should be > 0
-			self.display_message(True, "ERROR: Number of black plates required is zero, should be 1 or more.")
+			self.display_message(True, 'ERROR: Number of black plates required is zero, should be 1 or more.')
 			return False
 		elif(self.num_blk_plates_deck.get() == 0):
 			# error user should set to num in stack
-			self.display_message(True, "ERROR: Please load sufficient black plates (%s or more required) into stack 4 "\
-				"and use the dropdown entry field to set how many black plates there are now in the stack." % str(self.var_num_blk_plts_reqd.get()))
+			self.display_message(True, 'ERROR: Please load sufficient black plates (%s or more required) into stack 4 '\
+				'and use the dropdown entry field to set how many black plates there are now in the stack.' % str(self.var_num_blk_plts_reqd.get()))
 			return False
 		elif(self.num_blk_plates_deck.get() < self.var_num_blk_plts_reqd.get()):
 			# error user needs to load at least reqd plates to stack
-			self.display_message(True, "ERROR: Insufficient black plates (%s or more required), please add more and use the "\
-				"dropdown entry field to set how many black plates there are now in stack 4." % str(self.var_num_blk_plts_reqd.get()))
+			self.display_message(True, 'ERROR: Insufficient black plates (%s or more required), please add more and use the '\
+				'dropdown entry field to set how many black plates there are now in stack 4.' % str(self.var_num_blk_plts_reqd.get()))
 			return False
 		if askyesno('Verify', 'This will generate the Access System RunDef and Echo files. Are you sure?'):
-			self.display_message(False, "Starting file creation process, please wait...")
+			self.display_message(False, 'Starting file creation process, please wait...')
 
 		if(args.debug == True):
-			print_debug_message("Successfully validated number of black plates in stack")
+			print_debug_message('Successfully validated number of black plates in stack')
 
 		return True
 
@@ -1541,17 +1609,17 @@ class QuantificationGUI:
 		'''Create the experiment directory based on the lims plate grouping id'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
 		try:
-			self.expt_directory = os.path.join(settings.get('Common').get('dir_expt_root'), self.data_summary['lims_reference_id'])
-			check_and_create_directory(self.expt_directory)
+			self.s_expt_directory = os.path.join(settings.get('Common').get('dir_expt_root'), self.data_summary['lims_reference_id'])
+			check_and_create_directory(self.s_expt_directory)
 		except Exception as ex:
-			self.display_message(True, "ERROR: Exception creating the experiment directory. Error Message: <%s>" % str(ex))
+			self.display_message(True, 'ERROR: Exception creating the experiment directory. Error Message: <%s>' % str(ex))
 			return False
 
 		if(args.debug == True):
-			print_debug_message("Successfully created experiment directory")
+			print_debug_message('Successfully created experiment directory')
 
 		return True
 
@@ -1565,19 +1633,19 @@ class QuantificationGUI:
 		'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
 		if(not self.generate_sources_to_standards_csv_file()):
-			return False
-
-		if(not self.generate_sources_to_corning_black_csv_file()):
 			return False
 
 		if(not self.generate_standards_to_corning_black_csv_file()):
 			return False
 
+		if(not self.generate_sources_to_corning_black_csv_file()):
+			return False
+
 		if(args.debug == True):
-			print_debug_message("Successfully generated csv files")
+			print_debug_message('Successfully generated csv files')
 
 		return True
 
@@ -1589,16 +1657,19 @@ class QuantificationGUI:
 		'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
 		stnd_type 							= self.data_summary['standards_type']
 		
 		# open csv file for writing, wb = write in binary format, overwrites the file if the file exists or creates a new file
 		try:
 			# csv filepath set in confguration file
-			csv_filepath_sources_to_standards 	= os.path.join(self.expt_directory, settings.get('Quantification').get('dnaq_fn_sources_to_standards_csv'))
+			s_csv_filepath_sources_to_standards 	= os.path.join(self.s_expt_directory, settings.get('Quantification').get('dnaq_fn_sources_to_standards_csv'))
 
-			with open(csv_filepath_sources_to_standards, 'wb') as csvfile:
+			if(args.debug == True):
+				print_debug_message('s_csv_filepath_sources_to_standards = %s' % s_csv_filepath_sources_to_standards)
+
+			with open(s_csv_filepath_sources_to_standards, 'wb') as csvfile:
 				# for csv file open in binary format.  delimiter is defaulted to comma, quote character is defaulted to doublequote, quoting defaults to quote minimal
 				csv_writer = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
 				
@@ -1625,9 +1696,9 @@ class QuantificationGUI:
 					s_plt_idx 					= str(i_plt_idx)
 
 					if(args.debug == True):
-						print_debug_message("Plate indx = %s" % s_plt_idx)
+						print_debug_message('Plate indx = %s' % s_plt_idx)
 
-					src_plt_name 				= "DNAQ_source_%s" % s_plt_idx
+					src_plt_name 				= 'DNAQ_source_%s' % s_plt_idx
 					src_plt_barcode 			= self.data_summary['plts_dict'][s_plt_idx]['barcode']
 					
 					# fetch the wells for this plate
@@ -1637,15 +1708,15 @@ class QuantificationGUI:
 					standards_plt_pool_locn 	= quant_standards[stnd_type]['Pools']['sources'][s_plt_idx]['standards_plt_pool_locn']
 
 					if(args.debug == True):
-						print_debug_message("standards_plt_pool_locn = %s" % str(standards_plt_pool_locn))
+						print_debug_message('standards_plt_pool_locn = %s' % str(standards_plt_pool_locn))
 
 					dest_well 					= standards_plt_pool_locn
 
 					# TODO: add validation for all fields before writing the csv row
 					if(dest_well == None):
 						# error, unable to continue
-						self.display_message(True, "ERROR: Unable to determine valid pooling position for sources to standards plate csv creation. "\
-							"Source plate barcode <%s>. Check Standards configuration file. Cannot continue." % src_plt_barcode)
+						self.display_message(True, 'ERROR: Unable to determine valid pooling position for sources to standards plate csv creation. '\
+							'Source plate barcode <%s>. Check Standards configuration file. Cannot continue.' % src_plt_barcode)
 						return False
 					
 					# create csv rows for each sample or control on the source plate
@@ -1653,9 +1724,9 @@ class QuantificationGUI:
 					while i_src_well_idx < len(curr_wells):
 
 						if(args.debug == True):
-							print_debug_message("Well indx = %s" % str(i_src_well_idx))
+							print_debug_message('Well indx = %s' % str(i_src_well_idx))
 
-						if(curr_wells[i_src_well_idx]['ROLE'] == "SAMPLE" or curr_wells[i_src_well_idx]['ROLE'] == "CONTROL"):
+						if(curr_wells[i_src_well_idx]['ROLE'] == 'SAMPLE' or curr_wells[i_src_well_idx]['ROLE'] == 'CONTROL'):
 
 							# append line to csv
 							csv_writer.writerow([src_plt_name,
@@ -1672,11 +1743,183 @@ class QuantificationGUI:
 
 					i_plt_idx 					+= 1
 
+			# record log message
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Echo csv file for DNA sources to Standards: %s' % s_csv_filepath_sources_to_standards])
+
 		except IOError as e:
-			self.display_message(True, "ERROR: IOException writing Echo csv for the Standards intermediate plate to it's Black plate.\nError Code: <%s> Message: <%s>" % (str(e.errno), e.strerror))
+			self.display_message(True, 'ERROR: IOException writing Echo csv for the Standards intermediate plate to it\'s Black plate.\nError Code: <%s> Message: <%s>' % (str(e.errno), e.strerror))
 			return False
 		except Exception as ex:
-			self.display_message(True, "ERROR: Exception writing Echo csv for the Standards intermediate plate to it's Black plate.\nError Message: <%s>" % str(ex))
+			self.display_message(True, 'ERROR: Exception writing Echo csv for the Standards intermediate plate to it\'s Black plate.\nError Message: <%s>' % str(ex))
+			return False
+
+		return True
+
+	def generate_standards_to_corning_black_csv_file(self):
+		'''Generate the csv file for transferring the Standards plate wells to a Corning black plate
+
+		Generation varies depending on number and location of source pools and the number and location of ladder wells.
+		'''
+
+		if(args.debug == True):
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
+
+		stnd_type 							= self.data_summary['standards_type']
+
+		# open csv file for writing, wb = write in binary format, overwrites the file if the file exists or creates a new file
+		try:
+			# csv filepath set in confguration file
+			s_csv_filepath_standards_to_black 	= os.path.join(self.s_expt_directory, settings.get('Quantification').get('dnaq_fn_standards_to_black_csv'))
+
+			if(args.debug == True):
+				print_debug_message('s_csv_filepath_standards_to_black = %s' % s_csv_filepath_standards_to_black)
+
+			with open(s_csv_filepath_standards_to_black, 'wb') as csvfile:
+				# for csv file open in binary format.  delimiter is defaulted to comma, quote character is defaulted to doublequote, quoting defaults to quote minimal
+				csv_writer = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+
+				if(args.debug == True):
+					print_debug_message('csv writer open')
+				
+				# write header row
+				csv_writer.writerow(['Source Plate Name',
+									'Source Plate Barcode',
+									'Source Plate Type',
+									'Source Well',
+									'Transfer Volume',
+									'Destination Plate Name',
+									'Destination Plate Barcode',
+									'Destination Plate Type',
+									'Destination well'])
+
+				if(args.debug == True):
+					print_debug_message('written header row')
+
+				# create rows for each src plate sample and control for each pool on the standards plate
+				src_plt_name 				= 'DNAQ_standards'
+				src_plt_barcode 			= None
+				src_plt_type 				= '384PP_AQ_SP_High'
+
+				# name of the destination plate is DNAQ_Black_n where n is number of sources + 1 (LIFO stack counting from top downwards)
+				dest_plate_name 			= 'DNAQ_black_' + str(self.data_summary['num_src_plts'] + 1)
+				dest_plate_barcode 			= None
+				dest_plate_type 			= 'Corning_384PS_Black'
+
+				
+				# number of ladder wells and number of replicate ladders to make comes from standards configuration
+				num_ladder_wells 			= quant_standards[stnd_type]['Ladder']['num_of_ladder_wells']
+				num_ladder_reps 			= quant_standards[stnd_type]['Ladder']['num_of_ladder_reps_black_plate']
+
+				if(args.debug == True):
+					print_debug_message('num_ladder_wells = %s' % str(num_ladder_wells))
+					print_debug_message('num_ladder_reps = %s' % str(num_ladder_reps))
+
+				# perform ladder transfers num_of_ladder_reps_black_plate times
+				i_ladder_rep_idx 			= 0
+				while i_ladder_rep_idx < num_ladder_reps:
+
+					if(args.debug == True):
+						print_debug_message('Ladder rep idx = %s' % str(i_ladder_rep_idx))
+					
+					# loop by ladder well, fetching source and destination well information and transfer volume from standards config file	
+					i_ladder_idx 				= 1
+					while i_ladder_idx <= num_ladder_wells:
+
+						s_ladder_idx 				= str(i_ladder_idx)
+
+						if(args.debug == True):
+							print_debug_message('Ladder idx = %s' % s_ladder_idx)
+										
+						src_well 					= quant_standards[stnd_type]['Ladder']['wells'][s_ladder_idx]['well_posn']
+
+						if(args.debug == True):
+							print_debug_message('src_well = %s' % src_well)
+
+						src_transfer_vol 			= quant_standards[stnd_type]['Ladder']['wells'][s_ladder_idx]['vol_to_dispense_nl']
+
+						if(args.debug == True):
+							print_debug_message('src_transfer_vol = %s' % src_transfer_vol)
+
+						dest_well 					= quant_standards[stnd_type]['Ladder']['wells'][s_ladder_idx]['black_plt_well_locns'][i_ladder_rep_idx]
+
+						if(args.debug == True):
+							print_debug_message('dest_well = %s' % dest_well)
+
+						# append line to csv
+						csv_writer.writerow([src_plt_name,
+							src_plt_barcode,
+							src_plt_type,
+							src_well,
+							src_transfer_vol,
+							dest_plate_name,
+							dest_plate_barcode,
+							dest_plate_type,
+							dest_well])
+
+						i_ladder_idx 				+= 1 # increment ladder position
+
+					i_ladder_rep_idx 			+= 1 # increment ladder replicate
+
+
+				# perform DNA source pool transfers, which depends on number of plates and number of pool replicates to make
+				num_pool_replicates			= quant_standards[stnd_type]['Pools']['num_of_pool_reps_black_plate']
+
+				# source transfer volumes are different depending on whether we are transferring ladder wells or DNA source pools
+				src_transfer_vol 			= quant_standards[stnd_type]['Pools']['vol_pool_to_black_plate_nl'] # volume from standards config file
+
+				if(args.debug == True):
+					print_debug_message('num_pool_replicates = %s' % num_pool_replicates)
+					print_debug_message('src_transfer_vol = %s' % src_transfer_vol)
+
+				i_plt_idx 					= 1
+				while i_plt_idx <= self.data_summary['num_src_plts']:
+					s_plt_idx 				= str(i_plt_idx)
+
+					if(args.debug == True):
+						print_debug_message('s_plt_idx = %s' % s_plt_idx)
+
+					# fetch the pool position on the standards plate 
+					src_well 				= quant_standards[stnd_type]['Pools']['sources'][s_plt_idx]['standards_plt_pool_locn']
+
+					if(args.debug == True):
+						print_debug_message('src_well = %s' % src_well)
+
+					# create csv row for each pool replicate
+					i_pool_rep_idx 			= 0
+					while i_pool_rep_idx < num_pool_replicates:
+
+						if(args.debug == True):
+							print_debug_message('i_pool_rep_idx = %s' % str(i_pool_rep_idx))
+						
+						# destination wells depend on number of replicates of pool required and the locations specified in the standards config file
+						dest_well 				= quant_standards[stnd_type]['Pools']['sources'][s_plt_idx]['black_plt_well_locns'][i_pool_rep_idx]
+
+						if(args.debug == True):
+							print_debug_message('dest_well = %s' % dest_well)
+
+						# append line to csv
+						csv_writer.writerow([src_plt_name,
+							src_plt_barcode,
+							src_plt_type,
+							src_well,
+							src_transfer_vol,
+							dest_plate_name,
+							dest_plate_barcode,
+							dest_plate_type,
+							dest_well])
+
+						i_pool_rep_idx 			+= 1
+
+					i_plt_idx 				+= 1
+
+			# record log message
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Echo csv file for Standards to Black: %s' % s_csv_filepath_standards_to_black])
+
+		except IOError as e:
+			self.display_message(True, 'ERROR: IOException writing Echo csv for the Standards intermediate plate to it\'s Black plate.\nError Code: <%s> Message: <%s>' % (str(e.errno), e.strerror))
+			return False
+		except Exception as ex:
+			self.display_message(True, 'ERROR: Exception writing Echo csv for the Standards intermediate plate to it\'s Black plate.\nError Message: <%s>' % str(ex))
 			return False
 
 		return True
@@ -1688,16 +1931,19 @@ class QuantificationGUI:
 		'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
 		stnd_type 							= self.data_summary['standards_type']
 
 		# open csv file for writing, wb = write in binary format, overwrites the file if the file exists or creates a new file
 		try:
 			# csv filepath set in confguration file
-			csv_filepath_sources_to_black_plts 	= os.path.join(self.expt_directory, settings.get('Quantification').get('dnaq_fn_sources_to_black_plts_csv'))
+			s_csv_filepath_sources_to_black_plts 	= os.path.join(self.s_expt_directory, settings.get('Quantification').get('dnaq_fn_sources_to_black_plts_csv'))
 
-			with open(csv_filepath_sources_to_black_plts, 'wb') as csvfile:
+			if(args.debug == True):
+				print_debug_message('s_csv_filepath_sources_to_black_plts = %s' % s_csv_filepath_sources_to_black_plts)
+
+			with open(s_csv_filepath_sources_to_black_plts, 'wb') as csvfile:
 				# for csv file open in binary format.  delimiter is defaulted to comma, quote character is defaulted to doublequote, quoting defaults to quote minimal
 				csv_writer = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
 				
@@ -1724,12 +1970,12 @@ class QuantificationGUI:
 					s_plt_idx 					= str(i_plt_idx)
 
 					if(args.debug == True):
-						print_debug_message("s_plt_idx - %s" % s_plt_idx)
+						print_debug_message('s_plt_idx - %s' % s_plt_idx)
 
-					src_plt_name 				= "DNAQ_source_%s" % s_plt_idx
+					src_plt_name 				= 'DNAQ_source_%s' % s_plt_idx
 					src_plt_barcode 			= self.data_summary['plts_dict'][s_plt_idx]['barcode']
 
-					dest_plate_name 			= "DNAQ_black_%s" % s_plt_idx
+					dest_plate_name 			= 'DNAQ_black_%s' % s_plt_idx
 					
 					# fetch the wells for this plate
 					curr_wells 					= self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['WELLS']
@@ -1739,10 +1985,10 @@ class QuantificationGUI:
 					while i_src_well_idx < len(curr_wells):
 						s_src_well_idx = str(i_src_well_idx)
 
-						if(args.debug == True):
-							print_debug_message("s_src_well_idx - %s" % s_src_well_idx)
+						# if(args.debug == True):
+						# 	print_debug_message('s_src_well_idx - %s' % s_src_well_idx)
 
-						if(curr_wells[i_src_well_idx]['ROLE'] == "SAMPLE" or curr_wells[i_src_well_idx]['ROLE'] == "CONTROL"):
+						if(curr_wells[i_src_well_idx]['ROLE'] == 'SAMPLE' or curr_wells[i_src_well_idx]['ROLE'] == 'CONTROL'):
 
 	 						# append line to csv
 							csv_writer.writerow([src_plt_name,
@@ -1759,182 +2005,14 @@ class QuantificationGUI:
 
 					i_plt_idx 				+= 1
 
-		except IOError as e:
-			self.display_message(True, "ERROR: IOException writing Echo csv for the Standards intermediate plate to it's Black plate.\nError Code: <%s> Message: <%s>" % (str(e.errno), e.strerror))
-			return False
-		except Exception as ex:
-			self.display_message(True, "ERROR: Exception writing Echo csv for the Standards intermediate plate to it's Black plate.\nError Message: <%s>" % str(ex))
-			return False
-
-		return True
-
-
-	def generate_standards_to_corning_black_csv_file(self):
-		'''Generate the csv file for transferring the Standards plate wells to a Corning black plate
-
-		Generation varies depending on number and location of source pools and the number and location of ladder wells.
-		'''
-
-		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
-
-		stnd_type 							= self.data_summary['standards_type']
-
-		# open csv file for writing, wb = write in binary format, overwrites the file if the file exists or creates a new file
-		try:
-			# csv filepath set in confguration file
-			csv_filepath_standards_to_black 	= os.path.join(self.expt_directory, settings.get('Quantification').get('dnaq_fn_standards_to_black_csv'))
-
-			if(args.debug == True):
-				print_debug_message("csv_filepath_standards_to_black = %s" % csv_filepath_standards_to_black)
-
-			with open(csv_filepath_standards_to_black, 'wb') as csvfile:
-				# for csv file open in binary format.  delimiter is defaulted to comma, quote character is defaulted to doublequote, quoting defaults to quote minimal
-				csv_writer = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-
-				if(args.debug == True):
-					print_debug_message("csv writer open")
-				
-				# write header row
-				csv_writer.writerow(['Source Plate Name',
-									'Source Plate Barcode',
-									'Source Plate Type',
-									'Source Well',
-									'Transfer Volume',
-									'Destination Plate Name',
-									'Destination Plate Barcode',
-									'Destination Plate Type',
-									'Destination well'])
-
-				if(args.debug == True):
-					print_debug_message("written header row")
-
-				# create rows for each src plate sample and control for each pool on the standards plate
-				src_plt_name 				= "DNAQ_standards"
-				src_plt_barcode 			= None
-				src_plt_type 				= '384PP_AQ_SP_High'
-
-				# name of the destination plate is DNAQ_Black_n where n is number of sources + 1 (LIFO stack counting from top downwards)
-				dest_plate_name 			= 'DNAQ_black_' + str(self.data_summary['num_src_plts'] + 1)
-				dest_plate_barcode 			= None
-				dest_plate_type 			= 'Corning_384PS_Black'
-
-				
-				# number of ladder wells and number of replicate ladders to make comes from standards configuration
-				num_ladder_wells 			= quant_standards[stnd_type]['Ladder']['num_of_ladder_wells']
-				num_ladder_reps 			= quant_standards[stnd_type]['Ladder']['num_of_ladder_reps_black_plate']
-
-				if(args.debug == True):
-					print_debug_message("num_ladder_wells = %s" % str(num_ladder_wells))
-					print_debug_message("num_ladder_reps = %s" % str(num_ladder_reps))
-
-				# perform ladder transfers num_of_ladder_reps_black_plate times
-				i_ladder_rep_idx 			= 0
-				while i_ladder_rep_idx < num_ladder_reps:
-
-					# s_ladder_rep_idx = str(i_ladder_rep_idx)
-
-					if(args.debug == True):
-						print_debug_message("Ladder rep idx = %s" % str(i_ladder_rep_idx))
-					
-					# loop by ladder well, fetching source and destination well information and transfer volume from standards config file	
-					i_ladder_idx 				= 1
-					while i_ladder_idx <= num_ladder_wells:
-
-						s_ladder_idx 				= str(i_ladder_idx)
-
-						if(args.debug == True):
-							print_debug_message("Ladder idx = %s" % s_ladder_idx)
-										
-						src_well 					= quant_standards[stnd_type]['Ladder']['wells'][s_ladder_idx]['well_posn']
-
-						if(args.debug == True):
-							print_debug_message("src_well = %s" % src_well)
-
-						src_transfer_vol 			= quant_standards[stnd_type]['Ladder']['wells'][s_ladder_idx]['vol_to_dispense_nl']
-
-						if(args.debug == True):
-							print_debug_message("src_transfer_vol = %s" % src_transfer_vol)
-
-						dest_well 					= quant_standards[stnd_type]['Ladder']['wells'][s_ladder_idx]['black_plt_well_locns'][i_ladder_rep_idx]
-
-						if(args.debug == True):
-							# print("src_well = %s" % src_well)
-							# print("src_transfer_vol = %s" % src_transfer_vol)
-							print_debug_message("dest_well = %s" % dest_well)
-
-						# append line to csv
-						csv_writer.writerow([src_plt_name,
-							src_plt_barcode,
-							src_plt_type,
-							src_well,
-							src_transfer_vol,
-							dest_plate_name,
-							dest_plate_barcode,
-							dest_plate_type,
-							dest_well])
-
-						i_ladder_idx 				+= 1 # increment ladder position
-
-					i_ladder_rep_idx 			+= 1 # increment ladder replicate
-
-
-				# perform DNA source pool transfers, which depends on number of plates and number of pool replicates to make
-				num_pool_replicates			= quant_standards[stnd_type]['Pools']['num_of_pool_reps_black_plate']
-
-				# source transfer volumes are different depending on whether we are transferring ladder wells or DNA source pools
-				src_transfer_vol 			= quant_standards[stnd_type]['Pools']['vol_pool_to_black_plate_nl'] # volume from standards config file
-
-				if(args.debug == True):
-					print_debug_message("num_pool_replicates = %s" % num_pool_replicates)
-					print_debug_message("src_transfer_vol = %s" % src_transfer_vol)
-
-				i_plt_idx 					= 1
-				while i_plt_idx <= self.data_summary['num_src_plts']:
-					s_plt_idx 				= str(i_plt_idx)
-
-					if(args.debug == True):
-						print_debug_message("s_plt_idx = %s" % s_plt_idx)
-
-					# fetch the pool position on the standards plate 
-					src_well 				= quant_standards[stnd_type]['Pools']['sources'][s_plt_idx]['standards_plt_pool_locn']
-
-					if(args.debug == True):
-						print_debug_message("src_well = %s" % src_well)
-
-					# create csv row for each pool replicate
-					i_pool_rep_idx 			= 0
-					while i_pool_rep_idx < num_pool_replicates:
-
-						if(args.debug == True):
-							print_debug_message("i_pool_rep_idx = %s" % str(i_pool_rep_idx))
-						
-						# destination wells depend on number of replicates of pool required and the locations specified in the standards config file
-						dest_well 				= quant_standards[stnd_type]['Pools']['sources'][s_plt_idx]['black_plt_well_locns'][i_pool_rep_idx]
-
-						if(args.debug == True):
-							print_debug_message("dest_well = %s" % dest_well)
-
-						# append line to csv
-						csv_writer.writerow([src_plt_name,
-							src_plt_barcode,
-							src_plt_type,
-							src_well,
-							src_transfer_vol,
-							dest_plate_name,
-							dest_plate_barcode,
-							dest_plate_type,
-							dest_well])
-
-						i_pool_rep_idx 			+= 1
-
-					i_plt_idx 				+= 1
+			# record log message
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Echo csv file for DNA sources to Blacks: %s' % s_csv_filepath_sources_to_black_plts])
 
 		except IOError as e:
-			self.display_message(True, "ERROR: IOException writing Echo csv for the Standards intermediate plate to it's Black plate.\nError Code: <%s> Message: <%s>" % (str(e.errno), e.strerror))
+			self.display_message(True, 'ERROR: IOException writing Echo csv for the Standards intermediate plate to it\'s Black plate.\nError Code: <%s> Message: <%s>' % (str(e.errno), e.strerror))
 			return False
 		except Exception as ex:
-			self.display_message(True, "ERROR: Exception writing Echo csv for the Standards intermediate plate to it's Black plate.\nError Message: <%s>" % str(ex))
+			self.display_message(True, 'ERROR: Exception writing Echo csv for the Standards intermediate plate to it\'s Black plate.\nError Message: <%s>' % str(ex))
 			return False
 
 		return True
@@ -1954,74 +2032,73 @@ class QuantificationGUI:
 		'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
 		# set up the filepaths and generate the rundef dictionary
 		try:
-			rundef_template_dir 						= os.path.join(settings.get('Common').get('dir_rundef_templates'))
+			s_rundef_template_dir 						= os.path.join(settings.get('Common').get('dir_rundef_templates'))
 
-			rundef_1_template_filename 					= settings.get('Quantification').get('dnaq_fn_standards_rundef_template')
-			rundef_2_template_filename 					= settings.get('Quantification').get('dnaq_fn_dna_sources_rundef_template')
+			s_rundef_1_template_filename 				= settings.get('Quantification').get('dnaq_fn_standards_rundef_template')
+			s_rundef_2_template_filename 				= settings.get('Quantification').get('dnaq_fn_dna_sources_rundef_template')
 
-			rundef_1_template_filepath 					= os.path.join(rundef_template_dir, rundef_1_template_filename)
-			rundef_2_template_filepath 					= os.path.join(rundef_template_dir, rundef_2_template_filename)
-			print("In try 1")
-			self.dnaq_standards_rundef_expt_filename 	= "dnaq_standards_%s.rundef" % self.data_summary['lims_reference_id']
-			print("In try 2")
-			self.dnaq_dna_srcs_rundef_expt_filename 	= "dnaq_dna_srcs_%s.rundef" % self.data_summary['lims_reference_id']
-			print("In try 3")
-			rundef_1_expt_filepath 						= os.path.join(self.expt_directory, self.dnaq_standards_rundef_expt_filename)
-			print("In try 4")
-			rundef_2_expt_filepath 						= os.path.join(self.expt_directory, self.dnaq_dna_srcs_rundef_expt_filename)
-			print("In try 5")
-			rundef_1_tempo_inbox_filepath 				= os.path.join(settings.get('Common').get('dir_tempo_rundef_inbox'), self.dnaq_standards_rundef_expt_filename)
+			s_rundef_1_template_filepath 				= os.path.join(s_rundef_template_dir, s_rundef_1_template_filename)
+			s_rundef_2_template_filepath 				= os.path.join(s_rundef_template_dir, s_rundef_2_template_filename)
+			
+			self.s_dnaq_standards_rundef_expt_filename 	= 'dnaq_standards_%s.rundef' % self.data_summary['lims_reference_id']
+			self.s_dnaq_dna_srcs_rundef_expt_filename 	= 'dnaq_dna_srcs_%s.rundef' % self.data_summary['lims_reference_id']
+			
+			s_rundef_1_expt_filepath 					= os.path.join(self.s_expt_directory, self.s_dnaq_standards_rundef_expt_filename)
+			s_rundef_2_expt_filepath 					= os.path.join(self.s_expt_directory, self.s_dnaq_dna_srcs_rundef_expt_filename)
+			
+			s_rundef_1_tempo_inbox_filepath 			= os.path.join(settings.get('Common').get('dir_tempo_rundef_inbox'), self.s_dnaq_standards_rundef_expt_filename)
 
-			print("In try 6")
 			if(args.debug == True):
-				print_debug_message("rundef_1_template_filepath 			= %s" % rundef_1_template_filepath)
-				print_debug_message("rundef_2_template_filepath 			= %s" % rundef_2_template_filepath)
+				print_debug_message('s_rundef_1_template_filepath 			= %s' % s_rundef_1_template_filepath)
+				print_debug_message('s_rundef_2_template_filepath 			= %s' % s_rundef_2_template_filepath)
 
-				print_debug_message("dnaq_standards_rundef_expt_filename    = %s" % self.dnaq_standards_rundef_expt_filename)
-				print_debug_message("dnaq_dna_srcs_rundef_expt_filename    	= %s" % self.dnaq_dna_srcs_rundef_expt_filename)
+				print_debug_message('s_dnaq_standards_rundef_expt_filename  = %s' % self.s_dnaq_standards_rundef_expt_filename)
+				print_debug_message('s_dnaq_dna_srcs_rundef_expt_filename   = %s' % self.s_dnaq_dna_srcs_rundef_expt_filename)
 
-				print_debug_message("rundef_1_expt_filepath     			= %s" % rundef_1_expt_filepath)
-				print_debug_message("rundef_2_expt_filepath     			= %s" % rundef_2_expt_filepath)
+				print_debug_message('s_rundef_1_expt_filepath     			= %s' % s_rundef_1_expt_filepath)
+				print_debug_message('s_rundef_2_expt_filepath     			= %s' % s_rundef_2_expt_filepath)
 
-				print_debug_message("rundef_1_tempo_inbox_filepath 			= %s" % rundef_1_tempo_inbox_filepath)
+				print_debug_message('s_rundef_1_tempo_inbox_filepath 		= %s' % s_rundef_1_tempo_inbox_filepath)
 
 			# create a dictionary of search_string : value
-			print("In try 7")
 			quant_rundef_dict 							= self.generate_quantification_rundef_dictionary()
 
 			if(args.debug == True):
-				print_debug_message("Rundef keys:")
+				print_debug_message('Rundef keys:')
 				pprint(quant_rundef_dict.keys())
-				print_debug_message("-" * 80)
+				print_debug_message('-' * 80)
 			
 		except Exception as e:
-			self.display_message(True, "ERROR: Exception when determining directory paths while creating RunDef files.\nError Message: <%s>" % str(e))
+			self.display_message(True, 'ERROR: Exception when determining directory paths while creating RunDef files.\nError Message: <%s>' % str(e))
 			return False
 
-		if (not self.create_rundef_file_from_template(quant_rundef_dict, rundef_1_expt_filepath, rundef_1_template_filepath)):
+		if (not self.create_rundef_file_from_template(quant_rundef_dict, s_rundef_1_expt_filepath, s_rundef_1_template_filepath)):
 			return False
 
-		if (not self.create_rundef_file_from_template(quant_rundef_dict, rundef_2_expt_filepath, rundef_2_template_filepath)):
+		if (not self.create_rundef_file_from_template(quant_rundef_dict, s_rundef_2_expt_filepath, s_rundef_2_template_filepath)):
 			return False
 
 		# copy the first RunDef file (standards plate) into the Tempo inbox directory
 		try:
-			shutil.copyfile(rundef_1_expt_filepath, rundef_1_tempo_inbox_filepath)
+			shutil.copyfile(s_rundef_1_expt_filepath, s_rundef_1_tempo_inbox_filepath)
+
+			# record log message
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Tempo RunDef file copied to the Tempo Inbox at : %s' % s_rundef_1_tempo_inbox_filepath])
 		except Exception as e:
-			self.display_message(True, "ERROR: Exception copying the newly created RunDef file to the experiment directory.\nError Message: <%s>" % str(e))
+			self.display_message(True, 'ERROR: Exception copying the newly created RunDef file to the experiment directory.\nError Message: <%s>' % str(e))
 			return False
 
 		return True
 
-	def create_rundef_file_from_template(self, quant_rundef_dict, expt_filepath, template_filepath):
+	def create_rundef_file_from_template(self, quant_rundef_dict, s_expt_filepath, s_template_filepath):
 		'''Create the RunDef file from its template using the values in the dynamically-created dictionary'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
 		# open the template rundef file, and the new output rubdef file, and copy lines across
 		# replacing any terms matching those in the quant_rundef_dict
@@ -2031,8 +2108,8 @@ class QuantificationGUI:
 
 		i_line_num = 1
 		try:
-			with open(expt_filepath, 'w') as file_out:
-				with open(template_filepath, 'r') as file_in:
+			with open(s_expt_filepath, 'w') as file_out:
+				with open(s_template_filepath, 'r') as file_in:
 					# check each line in the template
 					for line in file_in:
 						# decode the line from utf-8 so we can work with it
@@ -2047,8 +2124,11 @@ class QuantificationGUI:
 						file_out.write(line)
 						i_line_num += 1
 		except Exception as e:
-			self.display_message(True, "ERROR: Exception creating the RunDef file at line <%s>.\nError Message: <%s>" % (str(i_line_num), str(e)))
+			self.display_message(True, 'ERROR: Exception creating the RunDef file at line <%s>.\nError Message: <%s>' % (str(i_line_num), str(e)))
 			return False
+
+		# record log message
+		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Tempo RunDef file created at : %s' % s_expt_filepath])
 
 		return True
 
@@ -2056,7 +2136,7 @@ class QuantificationGUI:
 		'''Generate the dictionary of fields to be replaced in the quantification rundef file'''
 
 		if(args.debug == True):
-			print_debug_message("In QuantificationGUI.%s" % inspect.currentframe().f_code.co_name)
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
 		quant_rundef_dict = {}
 
@@ -2064,7 +2144,7 @@ class QuantificationGUI:
 		quant_rundef_dict['SSS_RUNSET_REFERENCE_ID_SSS'] 					= self.data_summary['lims_reference_id']
 
 		# experiment directory root
-		quant_rundef_dict['SSS_EXPT_ROOT_DIR_SSS'] 							= self.expt_directory
+		quant_rundef_dict['SSS_EXPT_ROOT_DIR_SSS'] 							= self.s_expt_directory
 
 		# ecp filepath for 384dest type plates
 		quant_rundef_dict['SSS_CHERRY_PICK_384DEST_ECP_FP_SSS'] 			= settings.get('Common').get('fpath_ecp_384dest')
@@ -2073,13 +2153,13 @@ class QuantificationGUI:
 		quant_rundef_dict['SSS_CHERRY_PICK_CORNINGBLACK_ECP_FP_SSS'] 		= settings.get('Common').get('fpath_ecp_384corningblack')
 
 		# csv filepath for sources being pooled into the standards plate
-		quant_rundef_dict['SSS_SOURCES_POOL_TO_STANDARDS_CSV_FP_SSS'] 		= os.path.join(self.expt_directory, settings.get('Quantification').get('dnaq_fn_sources_to_standards_csv'))
+		quant_rundef_dict['SSS_SOURCES_POOL_TO_STANDARDS_CSV_FP_SSS'] 		= os.path.join(self.s_expt_directory, settings.get('Quantification').get('dnaq_fn_sources_to_standards_csv'))
 
 		# csv filepath for sources to corning black plates
-		quant_rundef_dict['SSS_SOURCES_TO_CORNINGBLACK_CSV_FP_SSS'] 		= os.path.join(self.expt_directory, settings.get('Quantification').get('dnaq_fn_sources_to_black_plts_csv'))
+		quant_rundef_dict['SSS_SOURCES_TO_CORNINGBLACK_CSV_FP_SSS'] 		= os.path.join(self.s_expt_directory, settings.get('Quantification').get('dnaq_fn_sources_to_black_plts_csv'))
 
 		# csv filepath for standards plate to corning black plate
-		quant_rundef_dict['SSS_STANDARDS_TO_CORNINGBLACK_CSV_FP_SSS'] 		= os.path.join(self.expt_directory, settings.get('Quantification').get('dnaq_fn_standards_to_black_csv'))
+		quant_rundef_dict['SSS_STANDARDS_TO_CORNINGBLACK_CSV_FP_SSS'] 		= os.path.join(self.s_expt_directory, settings.get('Quantification').get('dnaq_fn_standards_to_black_csv'))
 
 		i_srcs_init_stk_posn 				= settings.get('Common').get('src_plts_initial_stk_posn') # from main config
 		stnd_type 							= self.data_summary['standards_type']
@@ -2089,7 +2169,7 @@ class QuantificationGUI:
 		# Pooling from sources to Standards plate
 		# ---------------------------------------------------------------------
 		if(args.debug == True):
-			print_debug_message("Setting up rows for pooling to standards plate")
+			print_debug_message('Setting up rows for pooling to standards plate')
 
 		# create the source and destination plate rows for the sources pooling to the standards plate transfers
 
@@ -2097,7 +2177,7 @@ class QuantificationGUI:
 		i_src_idx 							= 1
 
 		if (i_src_idx < 10):
-			s_src_plt_num					= "0" + str(i_src_idx)				
+			s_src_plt_num					= '0' + str(i_src_idx)				
 		else:
 			s_src_plt_num					= str(i_src_idx)
 
@@ -2127,7 +2207,7 @@ class QuantificationGUI:
 
 			# add zero prefix if needed
 			if (i_src_idx < 10):
-				s_src_plt_num				= "0" + str(i_src_idx)				
+				s_src_plt_num				= '0' + str(i_src_idx)				
 			else:
 				s_src_plt_num				= str(i_src_idx)
 
@@ -2147,11 +2227,11 @@ class QuantificationGUI:
 		# Sources to Black plates
 		# ---------------------------------------------------------------------
 		if(args.debug == True):
-			print_debug_message("Setting up rows for sources to black plates")
+			print_debug_message('Setting up rows for sources to black plates')
 
 		# create the source and destination rows for the sources to black plates transfers
 		# for each source add a destination row
-		s_src_to_blks_rows 					= ""
+		s_src_to_blks_rows 					= ''
 		i_src_stk_posn 						= i_srcs_init_stk_posn
 		i_src_idx      						= 1
 		i_dest_idx 							= 1
@@ -2161,7 +2241,7 @@ class QuantificationGUI:
 			# add a source plate row
 			s_src_idx 						= str(i_src_idx)
 			if (i_src_idx < 10):
-				s_src_plt_num				= "0" + str(i_src_idx)				
+				s_src_plt_num				= '0' + str(i_src_idx)				
 			else:
 				s_src_plt_num				= str(i_src_idx)
 
@@ -2175,7 +2255,7 @@ class QuantificationGUI:
 
 			# add a corresponding destination plate row (these plates come from stack 4 and end up in stack 3, last in first out so numbered top down)
 			if (i_dest_idx < 10):
-				s_dest_plt_num				= "0" + str(i_dest_idx)				
+				s_dest_plt_num				= '0' + str(i_dest_idx)				
 			else:
 				s_dest_plt_num				= str(i_dest_idx)
 
@@ -2207,14 +2287,14 @@ class QuantificationGUI:
 		# Standards to Black plate
 		# ---------------------------------------------------------------------
 		if(args.debug == True):
-			print_debug_message("Setting up rows for standards plate to black plate")
+			print_debug_message('Setting up rows for standards plate to black plate')
 
 		# create the source and destination rows for the standards plate to its black plate transfer
 		# EchoPlateID is one more than number of sources
 		i_blk_plt_idx 						= self.data_summary['num_src_plts'] + 1
 		
 		if (i_blk_plt_idx < 10):
-			s_blk_plt_num					= "0" + str(i_blk_plt_idx)
+			s_blk_plt_num					= '0' + str(i_blk_plt_idx)
 		else:
 			s_blk_plt_num					= str(i_blk_plt_idx)
 
@@ -2240,7 +2320,7 @@ class QuantificationGUI:
 		# Plate storage section
 		# ---------------------------------------------------------------------
 		if(args.debug == True):
-			print_debug_message("Setting up the plate storage standards plate row")
+			print_debug_message('Setting up the plate storage standards plate row')
 
 		# PlateID,EchoPlateID,PlateName,PlateBarcode,PlateType,PlateCategory,LidType,Sealed,PlateStatus,OriginalLocation,FinalLocation,
 		# CurrentLocation,RunLocation,CurrentRotation,PlateRename,PlateState,LidLocation
@@ -2253,12 +2333,12 @@ class QuantificationGUI:
 		quant_rundef_dict['SSS_PLATE_STORAGE_STD_PLATE_SSS'] 					= s_plate_storage_std_row.encode('utf-8')
 
 		if(args.debug == True):
-			print_debug_message("Setting up the plate storage source plate rows")
+			print_debug_message('Setting up the plate storage source plate rows')
 
 		# create the source plate rows for the plate storage map
 		# e.g. 1845,0,DNAQ_source_01,,384PP,Source,,False,Unknown,deck://Deck/1/5/,deck://Deck/1/5/,deck://Deck/1/5/,,0,,Unknown,,
 		# 1845 -> 1860 so 16 max
-		s_plate_storage_src_rows			= ""
+		s_plate_storage_src_rows			= ''
 		i_src_stk_posn 						= i_srcs_init_stk_posn
 		i_src_idx      						= 1
 		i_plate_id 							= 1845
@@ -2280,12 +2360,12 @@ class QuantificationGUI:
 		quant_rundef_dict['SSS_PLATE_STORAGE_SRC_PLATES_SSS'] 					= s_plate_storage_src_rows.encode('utf-8')
 
 		if(args.debug == True):
-			print_debug_message("Setting up the plate storage destination plate rows")
+			print_debug_message('Setting up the plate storage destination plate rows')
 
 		# create the destination plate rows for the plate storage map
 		# e.g. 1861,DEST20,DNAQ_Black,,Corning_384PS_Black,Destination,,False,Unknown,deck://Deck/4/1/,deck://Deck/3/*/,deck://Deck/4/1/,,0,,Unknown,,
 		# 1861 -> 1880
-		s_plate_storage_dest_rows			= ""
+		s_plate_storage_dest_rows			= ''
 		i_dest_idx      					= 1
 		i_plate_id 							= 1880
 		i_dest_plt_echo_id_idx 				= self.num_blk_plates_deck.get()
@@ -2306,113 +2386,115 @@ class QuantificationGUI:
 		quant_rundef_dict['SSS_PLATE_STORAGE_DEST_PLATES_SSS'] 					= s_plate_storage_dest_rows.encode('utf-8')
 
 		if(args.debug == True):
-			print_debug_message("-" * 80)
-			print_debug_message("Rundef dictionary:")
+			print_debug_message('-' * 80)
+			print_debug_message('Rundef dictionary:')
 			pprint(quant_rundef_dict)
-			print_debug_message("-" * 80)
+			print_debug_message('-' * 80)
 
 		return quant_rundef_dict
 
 # -----------------------------------------------------------------------------
 # Utility Methods
 # -----------------------------------------------------------------------------
-def check_and_create_directory(directory):
+def check_and_create_directory(s_directory):
 	'''Check whether a directory exists and create it if not'''
 
 	if(args.debug == True):
-		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
-
-	if(args.debug == True):
-		print_debug_message("Attempting to create directory = %s" % directory)
+		print_debug_message('In %s' % inspect.currentframe().f_code.co_name)
 
 	# check if the directory exists and create it if not
-	if(not os.path.exists(directory)):
-		os.makedirs(directory)
+	if(not os.path.exists(s_directory)):
+		if(args.debug == True):
+			print_debug_message('Attempting to create directory = %s' % s_directory)
+
+		os.makedirs(s_directory)
 
 	return
 
-def move_and_rename_directory(src_dir, dest_dir):
+def get_current_timestamp_as_string():
+	'''Return the current timestamp as a string'''
+
+	return time.strftime('%Y%m%d_%H%M%S')
+
+def get_current_time_as_string():
+	'''Return the current time as a string'''
+	
+	return time.strftime('%H:%M:%S ')
+
+def move_and_rename_directory(s_src_dir, s_dest_dir):
 	'''Rename and move one directory into another'''
 
 	if(args.debug == True):
-		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
-		print_debug_message("Source dir = %s" % src_dir)
-		print_debug_message("Destination dir = %s" % dest_dir)
+		print_debug_message('In %s' % inspect.currentframe().f_code.co_name)
+		print_debug_message('Source dir      = %s' % s_src_dir)
+		print_debug_message('Destination dir = %s' % s_dest_dir)
 
-	shutil.move(src_dir, dest_dir)
+	shutil.move(s_src_dir, s_dest_dir)
 
 	return
 
-def print_debug_message(message):
+def print_debug_message(s_message):
 	'''Print a debug message'''
 
-	print("DEBUG: " + str(message))
+	print('DEBUG: ' + str(s_message))
 
 	return
 
-def read_configuration_file(filepath):
+def read_configuration_file(s_filepath):
 	'''Reads a configuration file and checks for errors'''
 
 	if(args.debug == True):
-		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message('In %s' % inspect.currentframe().f_code.co_name)
 
 	try:
-		print_debug_message("Attempting to read config")
-		config = ConfigObj(filepath)
+		print_debug_message('Attempting to read config')
+		config = ConfigObj(s_filepath)
 	except ValueError as ve:
-		print_debug_message("Caught ValueError")
+		print_debug_message('Caught ValueError')
 		if(args.debug == True):
-			print_debug_message("-" * 80)
-			print_debug_message("ValueError raised:")
-			print_debug_message("Line: <%s> %s" % (ve.line_number, ve.line))
-			print_debug_message("Msg : %s" % ve.message)
-			print_debug_message("-" * 80)
+			print_debug_message('-' * 80)
+			print_debug_message('ValueError raised:')
+			print_debug_message('Line: <%s> %s' % (ve.line_number, ve.line))
+			print_debug_message('Msg : %s' % ve.message)
+			print_debug_message('-' * 80)
 
-		sys.exit("Access System Script: ValueError parsing config file from filepath  <%s>. Cannot continue. Message: %s" % (filepath, ve.message))
+		sys.exit('Access System Script: ValueError parsing config file from filepath  <%s>. Cannot continue. Message: %s' % (s_filepath, ve.message))
 	except ConfigObjError as ce:
-		print_debug_message("Caught ConfigObjError")
+		print_debug_message('Caught ConfigObjError')
 		if(args.debug == True):
-			print_debug_message("-" * 80)
-			print_debug_message("Part of Config that parsed successfully:")
+			print_debug_message('-' * 80)
+			print_debug_message('Part of Config that parsed successfully:')
 			pprint(ce.config)
-			print_debug_message("-" * 80)
-			print_debug_message("Errors raised:")
+			print_debug_message('-' * 80)
+			print_debug_message('Errors raised:')
 			for er in ce.errors:
-				print_debug_message("- " * 40)
-				print_debug_message("Line: <%s> %s" % (er.line_number, er.line))
-				print_debug_message("Msg : %s" % er.message)
-			print_debug_message("-" * 80)
+				print_debug_message('- ' * 40)
+				print_debug_message('Line: <%s> %s' % (er.line_number, er.line))
+				print_debug_message('Msg : %s' % er.message)
+			print_debug_message('-' * 80)
 
-		sys.exit("Access System Script: ConfigObjError parsing config file from filepath  <%s>. Cannot continue. Message: %s" % (filepath, er.message))
+		sys.exit('Access System Script: ConfigObjError parsing config file from filepath  <%s>. Cannot continue. Message: %s' % (s_filepath, ce.message))
 
 	return config
 
-# def regex_replace_field_in_xml(xml_string, re_string, replacement_string):
-# 	'''Use a Regular Expression to replace one value in an XML string with another'''
-
-# 	if(args.debug == True):
-# 		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
-# 		print_debug_message("XML string: %s" % xml_string)
-# 		print_debug_message("RegEx string: %s" % re_string)
-# 		print_debug_message("Replacement string: %s" % replacement_string)
-
-
-# 	# Substitute in a string to replace the regex string currently there
-# 	# substitutions		= {re_string: replacement_string, ...}
-# 	substitutions		= {re_string: replacement_string}
-# 	pattern 			= re.compile(r'%([^%]+)%')
-# 	xml_string_modified = re.sub(pattern, lambda m: substitutions[m.group(1)], xml_string)
-
-# 	if(args.debug == True):
-# 		print_debug_message("Modified XML: %s" % xml_string_modified)
-
-# 	# return modified XML string
-# 	return xml_string_modified
-
-def append_to_log(log_filepath, message):
+def append_to_log_file(s_log_dir, s_log_filename, s_log_msg_list):
 	'''Append a message line to a specified log file'''
 	
-	# dnaq_fn_log
+	# check whether the log directory exists and create it if not
+	check_and_create_directory(s_log_dir)
+
+	# create the filepath
+	s_log_filepath = os.path.join(s_log_dir, s_log_filename)
+
+	# open the file in append mode (the + creates the file if it doesn't exist)
+	with open(s_log_filepath, 'a+') as myfile:
+
+		# append each message line into the file
+		for s_msg_line in s_log_msg_list:
+		
+			# prefix the message line with the current timestamp and add a new line
+			s_modified_message = get_current_timestamp_as_string() + ': ' + s_msg_line + '\n'
+			myfile.write(s_modified_message)
 
 	return
 
@@ -2423,7 +2505,7 @@ def setup_styles_and_themes():
 	'''Create any common styles and themes for the GUI screens'''
 
 	if(args.debug == True):
-		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message('In %s' % inspect.currentframe().f_code.co_name)
 
 	# to get the combobox to display properly without a grey border we need to apply a style theme
 	combobox_style 			= ttk.Style()
@@ -2457,7 +2539,7 @@ def create_widget_button(widg_frame, widg_params):
 
 	# create the button
 	button 	    			= Button(widg_frame,
-				text 		= widg_params.get('widg_text', ""),
+				text 		= widg_params.get('widg_text', ''),
 				textvariable= widg_params.get('widg_txt_var', None),
 				width   	= widg_params.get('widg_width', 16),
 				bg 			= widg_params.get('widg_bg', colour_white),
@@ -2484,7 +2566,7 @@ def create_widget_combobox(widg_frame, widg_params):
 	'''
 
 	if(args.debug == True):
-		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message('In %s' % inspect.currentframe().f_code.co_name)
 		pprint(widg_params)
 
 	# create the combobox (NB. style and theme set beforehand to make this display well)
@@ -2514,12 +2596,12 @@ def create_widget_label(widg_frame, widg_params):
 	'''
 
 	if(args.debug == True):
-		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message('In %s' % inspect.currentframe().f_code.co_name)
 		pprint(widg_params)
 
 	# create the label
 	label 	    			= Label(widg_frame,
-				text 		= widg_params.get('widg_text', ""),
+				text 		= widg_params.get('widg_text', ''),
 				textvariable= widg_params.get('widg_txt_var', None),
 				width  		= widg_params.get('widg_width', None),
 				bg 			= widg_params.get('widg_bg', colour_white),
@@ -2545,19 +2627,19 @@ def create_widget_text(widg_frame, widg_params):
 	'''
 
 	if(args.debug == True):
-		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message('In %s' % inspect.currentframe().f_code.co_name)
 		pprint(widg_params)
 
 	# create the text widget
 	text 	    			= Text(widg_frame,
-				wrap 		= widg_params.get("widg_wrap", WORD),
+				wrap 		= widg_params.get('widg_wrap', WORD),
 				height   	= widg_params.get('widg_height', 1),
 				bg 			= widg_params.get('widg_bg', colour_white),
 				fg 			= widg_params.get('widg_fg', colour_black),
 				font 		= widg_params.get('widg_font', font_arial_normal))
 
 	# write the text into the widget
-	text.insert("1.0", widg_params.get("widg_text", ""))
+	text.insert('1.0', widg_params.get('widg_text', ''))
 
 	# have to set state last or a disabled state prevents text being written
 	text.config(state = widg_params.get('widg_state', NORMAL))
@@ -2579,7 +2661,7 @@ def add_widget_to_grid(widg, widg_frame, widg_params):
 	'''
 
 	if(args.debug == True):
-		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message('In %s' % inspect.currentframe().f_code.co_name)
 		pprint(widg_params)
 
 	# add the widget to the grid
@@ -2593,7 +2675,7 @@ def add_widget_to_grid(widg, widg_frame, widg_params):
 				sticky 		= widg_params.get('grid_sticky', None))
 
 	if(widg_params.get('grid_has_border', False)):
-		widg.config(borderwidth=1, relief="solid")
+		widg.config(borderwidth=1, relief='solid')
 
 	return
 
@@ -2604,11 +2686,11 @@ def on_closing_window():
 	'''Called by a Protocol on the root window, when the user presses the window close button'''
 
 	if(args.debug == True):
-		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message('In %s' % inspect.currentframe().f_code.co_name)
 
 	if askyesno('Verify', 'Are you sure you want to Quit?'):
 		if(args.debug == True):
-			print_debug_message("User verified to close window")
+			print_debug_message('User verified to close window')
 
 		sys.exit()
 
@@ -2618,17 +2700,17 @@ def display_gui_quant():
 	'''Display the quantification setup GUI'''
 
 	if(args.debug == True):
-		print_debug_message("In %s" % inspect.currentframe().f_code.co_name)
+		print_debug_message('In %s' % inspect.currentframe().f_code.co_name)
 
 	root 		= Tk()
 	root.geometry('%dx%d+%d+%d' % (	settings.get('Common').get('gui_width'),
 									settings.get('Common').get('gui_height'), 
 									settings.get('Common').get('gui_x_posn'), 
 									settings.get('Common').get('gui_y_posn')))
-	root.title("Access System Script")
+	root.title('Access System Script')
 	app 		= QuantificationGUI(root)
 
-	root.protocol("WM_DELETE_WINDOW", on_closing_window)
+	root.protocol('WM_DELETE_WINDOW', on_closing_window)
 	root.mainloop()
 
 	return
