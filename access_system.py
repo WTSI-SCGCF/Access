@@ -86,7 +86,7 @@ TODO:
 * add logging messages throughout
 
 * add button to 'abort' run that tidies up experiment directory - for when Tempo crashes or ends run in poor way.
-  probably also needs to trap a 'close window' event in case user clicks there during a run.
+  probably also needs to trap a 'close window' event in case user clicks there during a run or after an error.
 
 '''
 
@@ -685,7 +685,7 @@ class QuantificationGUI:
 			self.lims_src_plt_grp_filepath = askopenfilename(title  = 'Select LIMS plate grouping file', initialdir = limsdir)
 
 		except Exception as e:
-			self.display_message(True, 'ERROR: Exception when attempting to open the network directory for the LIMS file.\nError Message: <%s>' % str(e))
+			self.gui_display_message(True, 'ERROR: Exception when attempting to open the network directory for the LIMS file.\nError Message: <%s>' % str(e))
 			return False
 
 		# update the lable to display the filepath
@@ -703,7 +703,7 @@ class QuantificationGUI:
 				print_debug_message('No file was selected!')
 
 			# red error msg line in screen
-			self.display_message(True, 'No file was selected, please try again.')		
+			self.gui_display_message(True, 'No file was selected, please try again.')		
 
 		return
 
@@ -787,7 +787,7 @@ class QuantificationGUI:
 					self.read_Lims_file_and_display_summary()
 
 		except Exception as e:
-			self.display_message(True, 'ERROR: Exception checking for lims plate layout files in the network directory.\nError Message: <%s>' % str(e))
+			self.gui_display_message(True, 'ERROR: Exception checking for lims plate layout files in the network directory.\nError Message: <%s>' % str(e))
 			return
 
 		return
@@ -800,7 +800,7 @@ class QuantificationGUI:
 
 		# validate that there are enough black plates in the stack
 		if(self.validate_number_of_black_plates_in_stack()):
-			self.display_message(False, 'Validated number of black plates in stack, now creating experiment directory, please wait...')
+			self.gui_display_message(False, 'Validated number of black plates in stack, now creating experiment directory, please wait...')
 		else:
 			if(args.debug == True):
 				print_debug_message('Failed to validate number of black plates in stack')
@@ -808,7 +808,7 @@ class QuantificationGUI:
 
 		# create expt dir using lims_reference_id
 		if(self.create_quantification_experiment_directory()):
-			self.display_message(False, 'Created experiment directory at <%s>, now generating Echo csv files, please wait...' % self.s_expt_directory)
+			self.gui_display_message(False, 'Created experiment directory at <%s>, now generating Echo csv files, please wait...' % self.s_expt_directory)
 		else:
 			if(args.debug == True):
 				print_debug_message('Failed to create experiment directory')
@@ -819,7 +819,7 @@ class QuantificationGUI:
 
 		# generate Echo csvs in expt dir
 		if(self.generate_quantification_echo_files()):
-			self.display_message(False, 'ECHO csv files created, now generating RunDef file, please wait...')
+			self.gui_display_message(False, 'ECHO csv files created, now generating RunDef file, please wait...')
 		else:
 			if(args.debug == True):
 				print_debug_message('Failed to generate csv files')
@@ -829,7 +829,7 @@ class QuantificationGUI:
 
 		# generate Access RunDef files
 		if(self.generate_quantification_rundef_files()):
-			self.display_message(False, 'RunDef files created in experiment directory, now tidying up, please wait...')
+			self.gui_display_message(False, 'RunDef files created in experiment directory, now tidying up, please wait...')
 		else:
 			if(args.debug == True):
 				print_debug_message('Failed to generate RunDef file')
@@ -842,14 +842,14 @@ class QuantificationGUI:
 			lims_src_plt_grp_filename 	= os.path.basename(self.lims_src_plt_grp_filepath)
 			new_expt_filepath 			= os.path.join(self.s_expt_directory, lims_src_plt_grp_filename)
 
-			shutil.copyfile(self.lims_src_plt_grp_filepath, new_expt_filepath)
+			copy_file(self.lims_src_plt_grp_filepath, new_expt_filepath)
 
 			# record log message
 			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['LIMS plate file copied to experiment directory at : %s' % new_expt_filepath, '-' * 62])
 
-			self.display_message(False, 'RunDef file <%s> moved to the Tempo Inbox.' % self.s_dnaq_standards_rundef_expt_filename)
+			self.gui_display_message(False, 'RunDef file <%s> moved to the Tempo Inbox.' % self.s_dnaq_standards_rundef_expt_filename)
 		except Exception as e:
-			self.display_message(True, 'ERROR: Exception copying the LIMS plate grouping file into the experiment directory.\nError Message: <%s>' % str(e))
+			self.gui_display_message(True, 'ERROR: Exception copying the LIMS plate grouping file into the experiment directory.\nError Message: <%s>' % str(e))
 			return
 
 		# dna quantification standards plate creation and read is done with a runset that has two runs
@@ -900,7 +900,7 @@ class QuantificationGUI:
 		# 			print_debug_message('Current Run filename  = <%s>' % current_run_filename)
 
 		# 	except Exception as e:
-		# 		self.display_message(True, 'ERROR: Exception determining the current run directory.\nError Message: <%s>' % str(e))
+		# 		self.gui_display_message(True, 'ERROR: Exception determining the current run directory.\nError Message: <%s>' % str(e))
 		# 		return
 
 		# 	# monitor the run state
@@ -912,7 +912,7 @@ class QuantificationGUI:
 		# 			print_debug_message('Run <%s> completed successfully, now performing post-run actions' % str(self.current_run_identifier['run_id_num']))
 
 		# 		if(not self.perform_post_run_actions()):
-		# 			self.display_message(True, 'ERROR: Run number <%s> post-run actions failed. Cannot continue monitoring.' % str(self.current_run_identifier['run_id_num']))
+		# 			self.gui_display_message(True, 'ERROR: Run number <%s> post-run actions failed. Cannot continue monitoring.' % str(self.current_run_identifier['run_id_num']))
 		# 			self.abort_experiment()
 		# 			return
 		# 	elif(self.is_run_completed_successfully == False):
@@ -920,18 +920,18 @@ class QuantificationGUI:
 		# 		if(args.debug == True):
 		# 			print_debug_message('Run <%s> was stopped prematurely by Tempo' % str(self.current_run_identifier['run_id_num']))
 
-		# 		self.display_message(True, 'ERROR: Run number <%s> was Stopped by Tempo. Cannot continue monitoring.' % str(self.current_run_identifier['run_id_num']))
+		# 		self.gui_display_message(True, 'ERROR: Run number <%s> was Stopped by Tempo. Cannot continue monitoring.' % str(self.current_run_identifier['run_id_num']))
 		# 		self.abort_experiment()
 		# 		return
 
 		# 	else:
 		# 		# unexpected result
-		# 		self.display_message(True, 'ERROR: Run <%s> success flag was None, unexpected result. Cannot continue.' % str(self.current_run_identifier['run_id_num']))
+		# 		self.gui_display_message(True, 'ERROR: Run <%s> success flag was None, unexpected result. Cannot continue.' % str(self.current_run_identifier['run_id_num']))
 		# 		self.abort_experiment()
 		# 		return
 
 		# # if we reach here the rundef has completed and we can clean up		
-		# self.display_message(False, 'Monitoring of RunDef <%s> has completed' % self.current_rundef_identifier['rundef_identifier'])
+		# self.gui_display_message(False, 'Monitoring of RunDef <%s> has completed' % self.current_rundef_identifier['rundef_identifier'])
 
 		# Continue to monitor the tempo outbox and error directories in the background whilst Tempo runs.
 		# Look for a RunDef in these directories matching the RunDef 3 name (will have timestamp prefix).
@@ -1010,7 +1010,7 @@ class QuantificationGUI:
 
 			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, log_msg_list)
 		except Exception as e:
-			self.display_message(True, 'ERROR: Exception when attempting to create the log file <%s> in the experiment directory.\nError Message: <%s>' % (s_log_filename, str(e)))
+			self.gui_display_message(True, 'ERROR: Exception when attempting to create the log file <%s> in the experiment directory.\nError Message: <%s>' % (s_log_filename, str(e)))
 			return
 
 		return
@@ -1037,7 +1037,7 @@ class QuantificationGUI:
 					self.extract_rundef_file_error_information(rundef_file)
 					return
 		
-		self.display_message(False, 'Waiting for Tempo to process the RunDef file...')
+		self.gui_display_message(False, 'Waiting for Tempo to process the RunDef file...')
 
 		# after(delay_ms, callback=None, *args)
 		# e.g. after(100, myfunction, arg1, arg2, arg3, ...)
@@ -1053,10 +1053,9 @@ class QuantificationGUI:
 
 		dir_outbox 	= settings.get('Common').get('dir_tempo_rundef_outbox')
 
-		self.display_message(False, 'Tempo has processed the RunDef file into the outbox dir: <%s>, now attempting to verify file and parse RunIDs' % s_rundef_file)
+		self.gui_display_message(False, 'Tempo has processed the RunDef file into the outbox dir: <%s>, attempting to parse RunIDs' % s_rundef_file)
 
-		log_msg_list = []
-		log_msg_list.append('Tempo processed RunDef file to Outbox: %s' % s_rundef_file)
+		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Tempo processed RunDef file to Outbox: %s' % s_rundef_file])
 
 		# parse RunDef (XML format)file to identify run ids
 		run_ids_list = []
@@ -1077,67 +1076,104 @@ class QuantificationGUI:
 				s_run_stage_num  	= run_ref_split_list[1]
 
 				if(args.debug == True):
-				    print_debug_message('RunID = %s' % s_run_id)
-				    print_debug_message('RunName = %s' % s_run_name)
-				    print_debug_message('Run LIMS ref id = %s' % s_run_ref_id)
+				    print_debug_message('RunID            = %s' % s_run_id)
+				    print_debug_message('RunName          = %s' % s_run_name)
+				    print_debug_message('Run LIMS ref id  = %s' % s_run_ref_id)
 				    print_debug_message('Run stage number = %s' % s_run_stage_num)
 
 				# verify this file is for this runset
 				if(not s_run_ref_id ==self.data_summary['lims_reference_id']):
-					self.display_message(True, 'ERROR: Run ReferenceID <%s> does not match expected when attempting to parse the RunDef file to extract RunIDs' % s_run_ref_id)
+					s_err_msg = 'ERROR: Run ReferenceID <%s> does not match expected when attempting to parse the RunDef file to extract RunIDs' % s_run_ref_id
+					append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_err_msg]) # write to log
+					self.gui_display_message(True, s_err_msg)
 					return
 
 				# verify that the run id extracted is a number
 				if(s_run_id == None or s_run_id == '0'):
-					self.display_message(True, 'ERROR: RunID zero or null when attempting to parse the RunDef file to extract RunIDs')
+					s_err_msg = 'ERROR: RunID zero or null when attempting to parse the RunDef file to extract RunIDs'
+					append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_err_msg]) # write to log
+					self.gui_display_message(True, s_err_msg)
 					return
 				else:
 					run_ids_list.append(s_run_id)
-					log_msg_list.append('Identified RunID: %s' % s_run_id)
+					append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Identified RunID: %s' % s_run_id]) # write to log
 					
 		except Exception as e:
-			self.display_message(True, 'ERROR: Exception when attempting to parse the RunDef file to extract RunIDs.\nError Message: <%s>' % str(e))
+			s_err_msg = 'ERROR: Exception when attempting to parse the RunDef file to extract RunIDs.\nError Message: <%s>' % str(e)
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_err_msg]) # write to log
+			self.gui_display_message(True, s_err_msg)
 			return
-
-		# write to log
-		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, log_msg_list)
 
 		# set the run processing identifiers according to the current_rundef_identifier 
 		self.current_run_identifiers = []
-		if self.current_rundef_identifier['rundef_identifier'] == 'dnaq_process_standards':
+		if(self.current_rundef_identifier['rundef_identifier'] == 'dnaq_process_standards'):
 			# expecting two run ids
 			if(len(run_ids_list) == 2):
 				self.current_run_identifiers.append({'run_identifier_name' : 'dnaq_process_standards_run_1', 'run_id_num' : run_ids_list[0]})
 				self.current_run_identifiers.append({'run_identifier_name' : 'dnaq_process_standards_run_2', 'run_id_num' : run_ids_list[1]})
 			else:
-				self.display_message(True, 'ERROR: Unexpected number of RunIDs found in Standards RunDef file, found <%s> when expecting 2. Cannot continue.' % run_ids_list.len)
+				s_err_msg = 'ERROR: Unexpected number of RunIDs found in Standards RunDef file, found <%s> when expecting 2. Cannot continue.' % run_ids_list.len
+				append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_err_msg]) # write to log
+				self.gui_display_message(True, s_err_msg)
 				return
-		elif self.current_rundef_identifier['rundef_identifier'] == 'dnaq_process_dna_sources':
+		elif(self.current_rundef_identifier['rundef_identifier'] == 'dnaq_process_dna_sources'):
 			# expecting one run id
 			if(len(run_ids_list) == 1):
 				self.current_run_identifiers.append({'run_identifier_name' : 'dnaq_process_dna_sources_run_1', 'run_id_num' : run_ids_list[0]})
 			else:
-				self.display_message(True, 'ERROR: Unexpected number of RunIDs found in DNA Sources RunDef file, found <%s> when expecting 1. Cannot continue.' % run_ids_list.len)
+				s_err_msg = 'ERROR: Unexpected number of RunIDs found in DNA Sources RunDef file, found <%s> when expecting 1. Cannot continue.' % run_ids_list.len
+				append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_err_msg]) # write to log
+				self.gui_display_message(True, s_err_msg)
 				return
 		else:
-			self.display_message(True, 'ERROR: Unrecognised current rundef identifier <%s>. Cannot continue.' % self.current_rundef_identifier['rundef_identifier'])
+			s_err_msg = 'ERROR: Unrecognised current rundef identifier <%s>. Cannot continue.' % self.current_rundef_identifier['rundef_identifier']
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_err_msg]) # write to log
+			self.gui_display_message(True, s_err_msg)
 			return
 
 		self.monitor_tempo_rundef_run(0)
 		return
 
-	def extract_rundef_file_error_information(self, file):
+	def extract_rundef_file_error_information(self, s_rundef_filename):
 		'''Called if the RunDef file is located in the Tempo error directory'''
 
 		if(args.debug == True):
 			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
-		dir_error 	= settings.get('Common').get('dir_tempo_rundef_error')
-
 		# If Tempo detects an error with the RunDef file it moves it to the /error directory (without renaming) and creates a .err file matching the RunDef file name
-		self.display_message(True, 'Tempo detected a problem with this RunDef file. See the Tempo error directory <%s> for more information' % dir_error)
+		s_err_msg = 'Tempo detected a problem with RunDef file <%s>. See the .err file in the experiment tempo_rundef_error directory for details.' % s_rundef_filename
+		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_err_msg]) # write to log
+		self.gui_display_message(True, s_err_msg)
 
-		#TODO: extract information from rundef .err file and display to user
+		# copy the error file and rundef (rundef file name stays the same, error file ends in .err) to the expt directory
+		try:
+			# create the experiment error directory if it doesn't exist
+			s_expt_err_dir 				= os.path.join(self.s_expt_directory, 'tempo_rundef_error')
+			check_and_create_directory(s_expt_err_dir)
+			s_tempo_error_dir 			= settings.get('Common').get('dir_tempo_rundef_error')
+
+			# copy the .rundef file
+			s_rundef_src_filepath 		= os.path.join(s_tempo_error_dir, s_rundef_filename)
+			s_rundef_dest_filepath		= os.path.join(s_expt_err_dir, s_rundef_filename)
+			copy_file(s_rundef_src_filepath, s_rundef_dest_filepath)
+
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Copied RunDef file <%s> to experiment tempo_rundef_error directory' % s_rundef_filename]) # write to log
+
+			# copy the .err file
+			s_err_filename 				= os.path.splitext(s_rundef_filename)[0] + '.err'
+			s_err_src_filepath 			= os.path.join(s_tempo_error_dir, s_err_filename)
+			s_err_dest_filepath			= os.path.join(s_expt_err_dir, s_err_filename)
+			copy_file(s_err_src_filepath, s_err_dest_filepath)
+
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Copied Err file <%s> to experiment tempo_rundef_error directory' % s_err_filename]) # write to log
+
+		except Exception as e:
+			s_err_msg = 'ERROR: Exception trying to backup the Tempo run error files.\nError Message: <%s>' % str(e)
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_err_msg]) # write to log
+			self.gui_display_message(True, s_err_msg)
+			return
+
+		# TODO: extract information from rundef .err file and display to user?
 
 		return
 
@@ -1159,7 +1195,7 @@ class QuantificationGUI:
 				print_debug_message('Current Run filename  = <%s>' % current_run_filename)
 
 		except Exception as e:
-			self.display_message(True, 'ERROR: Exception determining the current run directory.\nError Message: <%s>' % str(e))
+			self.gui_display_message(True, 'ERROR: Exception determining the current run directory.\nError Message: <%s>' % str(e))
 			return
 
 		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Monitoring Run ID: %s' % str(self.current_run_identifier['run_id_num'])])
@@ -1186,7 +1222,7 @@ class QuantificationGUI:
 					current_runstate 	= runstate_node.text
 
 		except Exception as e:
-			self.display_message(True, 'ERROR: Exception when attempting to parse the .run file to extract RunState.\nError Message: <%s>' % str(e))
+			self.gui_display_message(True, 'ERROR: Exception when attempting to parse the .run file to extract RunState.\nError Message: <%s>' % str(e))
 			return False
 
 		# Pending 	– protocol execution has not yet started
@@ -1210,9 +1246,9 @@ class QuantificationGUI:
 				self.perform_run_stopped_actions()
 				return
 			else:
-				self.display_message(False, 'Waiting for Tempo to update the Run file <%s>, current state is <%s>' % (run_filename, current_runstate))
+				self.gui_display_message(False, 'Waiting for Tempo to update the Run file <%s>, current state is <%s>' % (run_filename, current_runstate))
 		else:
-			self.display_message(False, 'Waiting for Tempo to create the Run file <%s>' % run_filename)
+			self.gui_display_message(False, 'Waiting for Tempo to create the Run file <%s>' % run_filename)
 
 		self.root.after(2000, self.monitor_tempo_run_directory, run_dir, run_filename)
 
@@ -1221,11 +1257,17 @@ class QuantificationGUI:
 
 		if(args.debug == True):
 			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
-			print_debug_message('Performing post-run actions for Run identifier <%s> with RunID <%s>' % (self.current_run_identifier['run_identifier_name'], str(self.current_run_identifier['run_id_num'])))
+	
+		s_msg = 'Performing post-run actions for Run identifier <%s> with RunID <%s>' % (self.current_run_identifier['run_identifier_name'], str(self.current_run_identifier['run_id_num']))
+		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
+		self.gui_display_message(False, s_msg)
+
+		if(args.debug == True):
+			print_debug_message(s_msg)
 
 		# perform post run actions by identifiers
 		if(self.current_run_identifier['run_identifier_name'] == 'dnaq_process_standards_run_1'):
-			# do stuff specific to this run
+			# perform run-specific actions
 
 			# verify that run completed without errors:
 			# 		- find and copy across echo survey and transfer files
@@ -1235,13 +1277,15 @@ class QuantificationGUI:
 			# copy across run directory to experiment directory
 			# Use the Run_1/Plates1.xml file to map the plate ids and names to our DNA plate barcodes ] CHECK: will or will not the ids match to those in Run 3 as seperate rundef?!
 			
-			self.display_message(False, 'Post-Run actions for dnaq_process_standards_run_1 completed')
+			s_msg = 'Post-Run actions for dnaq_process_standards_run_1 with RunID <%s> completed' % str(self.current_run_identifier['run_id_num'])
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
+			self.gui_display_message(False, s_msg)
 
 			# process the second Run in the RunDef to transfer from Standards to black plate
 			self.monitor_tempo_rundef_run(1)
 
 		elif(self.current_run_identifier['run_identifier_name'] == 'dnaq_process_standards_run_2'):
-			# do stuff specific to this run
+			# perform run-specific actions
 
 			# Once Run 2 <RunState> is 'Complete'
 			# 	Use the Run_2/Plates2.xml file to map the plate ids and names for our standards and black plate
@@ -1271,17 +1315,27 @@ class QuantificationGUI:
 			# 		Tidy up:
 			# 			copy Run 1 and 2 Tempo logs directories into expt/%reference_id% directory and then rename the expt/%reference_id% directory as _aborted_%timestamp%).
 
+			s_msg = 'Post-Run actions for dnaq_process_standards_run_2 with RunID <%s> completed' % str(self.current_run_identifier['run_id_num'])
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
+			self.gui_display_message(False, s_msg)
 
-			self.display_message(False, 'Post-Run actions for dnaq_process_standards_run_2 completed')
+			self.perform_post_rundef_actions()
 
 		elif(self.current_run_identifier['run_identifier_name'] == 'dnaq_process_dna_sources_run_1'):
-			# do stuff specific to this run
-			self.display_message(False, 'Post-Run actions for dnaq_process_dna_sources_run_1 completed')
+			# perform run-specific actions
+
+			s_msg = 'Post-Run actions for dnaq_process_dna_sources_run_1 with RunID <%s> completed' % str(self.current_run_identifier['run_id_num'])
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
+			self.gui_display_message(False, s_msg)
+
+			self.perform_post_rundef_actions()
 
 		else:
 			# not recognised error
-			self.display_message(True, 'ERROR: Unrecognised run identifier <%s> when attempting to perform post-Run actions. Cannot continue.' % self.current_run_identifier['run_identifier_name'])
-			
+			s_msg = 'ERROR: Unrecognised run identifier <%s> when attempting to perform post-Run actions. Cannot continue.' % self.current_run_identifier['run_identifier_name']
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
+			self.gui_display_message(True, s_msg)
+
 		return
 
 	def perform_run_stopped_actions(self):
@@ -1289,30 +1343,86 @@ class QuantificationGUI:
 
 		if(args.debug == True):
 			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
-			print_debug_message('Tempo has Stopped the Run with identifier <%s> and RunID <%s>' % (self.current_run_identifier['run_identifier_name'], str(self.current_run_identifier['run_id_num'])))
 
-		self.display_message(True, 'Tempo has Stopped RunID <%s>, tidying up' % str(self.current_run_identifier['run_id_num']))
+		s_msg = 'Tempo has Stopped the Run with identifier <%s> and RunID <%s>' % (self.current_run_identifier['run_identifier_name'], str(self.current_run_identifier['run_id_num']))
+		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
+		self.gui_display_message(True, s_msg)
 
-		# perform post run actions by identifiers
+		if(args.debug == True):
+			print_debug_message(s_msg)
+
+		# perform post run stopped actions by identifiers
 		if(self.current_run_identifier['run_identifier_name'] == 'dnaq_process_standards_run_1'):
-			# do stuff specific to this run
+			# perform run-specific actions
 
-			self.display_message(False, 'Stopped Run actions for dnaq_process_standards_run_1 completed')
+			# TODO: add actions here
+
+			s_msg = 'Stopped Run actions for dnaq_process_standards_run_1 with RunID <%s> completed' % str(self.current_run_identifier['run_id_num'])
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
+			self.gui_display_message(False, s_msg)
 
 		elif(self.current_run_identifier['run_identifier_name'] == 'dnaq_process_standards_run_2'):
-			# do stuff specific to this run
+			# perform run-specific actions
 
-			self.display_message(False, 'Stopped Run actions for dnaq_process_standards_run_2 completed')
+			# TODO: add actions here
+
+			s_msg = 'Stopped Run actions for dnaq_process_standards_run_2 with RunID <%s> completed' % str(self.current_run_identifier['run_id_num'])
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
+			self.gui_display_message(False, s_msg)
 
 		elif(self.current_run_identifier['run_identifier_name'] == 'dnaq_process_dna_sources_run_1'):
-			# do stuff specific to this run
+			# perform run-specific actions
 
-			self.display_message(False, 'Stopped Run actions for dnaq_process_dna_sources_run_1 completed')
+			# TODO: add actions here
+
+			s_msg = 'Stopped Run actions for dnaq_process_dna_sources_run_1 with RunID <%s> completed' % str(self.current_run_identifier['run_id_num'])
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
+			self.gui_display_message(False, s_msg)
 
 		else:
 			# not recognised error
-			self.display_message(True, 'ERROR: Unrecognised run identifier <%s> when attempting to perform Stopped Run actions. Cannot continue.' % self.current_run_identifier['run_identifier_name'])
 			
+			s_msg = 'ERROR: Unrecognised run identifier <%s> when attempting to perform Stopped Run actions. Cannot continue.' % self.current_run_identifier['run_identifier_name']
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
+			self.gui_display_message(True, s_msg)
+
+		return
+
+	def perform_post_rundef_actions(self):
+		'''Perform any post-rundef actions'''
+
+		if(args.debug == True):
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
+
+		# perform post run actions by identifiers
+		if(self.current_rundef_identifier['rundef_identifier'] == 'dnaq_process_standards'):
+			# perform rundef-specific actions
+
+			# TODO: add actions here
+
+			s_msg = 'Post-RunDef actions for dnaq_process_standards for Reference ID <%s> completed' % self.data_summary['lims_reference_id']
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
+			self.gui_display_message(False, s_msg)
+
+		elif(self.current_rundef_identifier['rundef_identifier'] == 'dnaq_process_dna_sources'):
+			# perform rundef-specific actions
+
+			# TODO: add actions here
+
+			s_msg = 'Post-RunDef actions for dnaq_process_dna_sources for Reference ID <%s> completed' % self.data_summary['lims_reference_id']
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
+			self.gui_display_message(False, s_msg)
+
+		else:
+			# unexpected rundef identifier
+			s_msg = 'ERROR: Unrecognised current rundef identifier <%s>. Cannot continue.' % self.current_rundef_identifier['rundef_identifier']
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
+			self.gui_display_message(True, s_msg)
+
+			# TODO: add tidy up here
+
+			return
+
 		return
 
 	def abort_experiment(self):
@@ -1328,15 +1438,15 @@ class QuantificationGUI:
 			dest_dir  						= os.path.join(settings.get('Common').get('dir_expt_error'), new_dir_name)
 			move_and_rename_directory(self.s_expt_directory, dest_dir) 
 		except Exception as ex:
-			self.display_message(True, 'ERROR: Exception when aborting the experiment. Error Message: <%s>' % str(ex))
+			self.gui_display_message(True, 'ERROR: Exception when aborting the experiment. Error Message: <%s>' % str(ex))
 			return
 
-		self.display_message(False, 'Experiment aborted and directory moved to %s' % dest_dir)
+		self.gui_display_message(False, 'Experiment aborted and directory moved to %s' % dest_dir)
 
 		return
 
-	def display_message(self, is_error, message):
-		'''Display message on the screen'''
+	def gui_display_message(self, is_error, message):
+		'''Display message in the message panel in the GUI'''
 
 		if(args.debug == True):
 			print_debug_message('Displaying message: %s' % message)
@@ -1401,7 +1511,7 @@ class QuantificationGUI:
 				if(args.debug == True):
 					print_debug_message('Field located : %s' % expected_field)
 			else:
-				self.display_message(True, 'ERROR: Key field <%s> missing from this file. Cannot continue.' % expected_field)
+				self.gui_display_message(True, 'ERROR: Key field <%s> missing from this file. Cannot continue.' % expected_field)
 				return False
 
 		self.data_summary['lims_reference_id'] 	= self.data_lims_src_plt_grp['LIMS_PLATE_GROUP_ID']
@@ -1414,7 +1524,7 @@ class QuantificationGUI:
 
 		# validation check: there should be at least one plate
 		if(self.data_summary['num_src_plts'] == 0):
-			self.display_message(True, 'ERROR: Unable to identify any plates in this file. Cannot continue.')
+			self.gui_display_message(True, 'ERROR: Unable to identify any plates in this file. Cannot continue.')
 			return False
 
 		# set black plates required (n + 1 for standards intermediate plate)
@@ -1435,7 +1545,7 @@ class QuantificationGUI:
 			self.data_summary['plts_dict'][s_plt_idx]['standards_params'] 		= self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['STANDARDS_PARAMS']
 
 			if self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['STANDARDS_PARAMS'] not in valid_quant_standards:
-				self.display_message(True, 'ERROR: plate with barcode <%s> has a standards type of <%s> which is not currently supported. Cannot continue.' % (self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['BARCODE'], self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['STANDARDS_PARAMS']))
+				self.gui_display_message(True, 'ERROR: plate with barcode <%s> has a standards type of <%s> which is not currently supported. Cannot continue.' % (self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['BARCODE'], self.data_lims_src_plt_grp['PLATES'][s_plt_idx]['STANDARDS_PARAMS']))
 				return False
 
 			# count number of types of standards plates, used to check not got a mixed set
@@ -1467,13 +1577,13 @@ class QuantificationGUI:
 
 		# validation check: there is only one type of standards plate required, if more than one it's an error
 		if((len(standards_types) == 0) or (len(standards_types) > 1)):
-			self.display_message(True, 'ERROR: this group of plates contains %s types of standards plate requirements, which is not currently supported. Cannot continue.' % len(standards_types))
+			self.gui_display_message(True, 'ERROR: this group of plates contains %s types of standards plate requirements, which is not currently supported. Cannot continue.' % len(standards_types))
 			return False
 		else:
 			# fetch first and only key and store as the standards type for the group of plates
 			self.data_summary['standards_type'] = standards_types.keys()[0]
 
-		self.display_message(False, 'LIMS file successfully validated. Plates found: %s. Please check and indicate how many black plates are in stack 4 and press \'Create Access Files\'' % str(self.data_summary['num_src_plts']))
+		self.gui_display_message(False, 'LIMS file successfully validated. Plates found: %s. Please check and indicate how many black plates are in stack 4 and press \'Create Access Files\'' % str(self.data_summary['num_src_plts']))
 
 		if(args.debug == True):
 			print_debug_message(pprint(self.data_summary))
@@ -1585,20 +1695,20 @@ class QuantificationGUI:
 		# compare number of plates required to number user has indicated they've loaded (to force them to think about it and check stack)
 		if(self.var_num_blk_plts_reqd.get() == 0):
 			# error should be > 0
-			self.display_message(True, 'ERROR: Number of black plates required is zero, should be 1 or more.')
+			self.gui_display_message(True, 'ERROR: Number of black plates required is zero, should be 1 or more.')
 			return False
 		elif(self.num_blk_plates_deck.get() == 0):
 			# error user should set to num in stack
-			self.display_message(True, 'ERROR: Please load sufficient black plates (%s or more required) into stack 4 '\
+			self.gui_display_message(True, 'ERROR: Please load sufficient black plates (%s or more required) into stack 4 '\
 				'and use the dropdown entry field to set how many black plates there are now in the stack.' % str(self.var_num_blk_plts_reqd.get()))
 			return False
 		elif(self.num_blk_plates_deck.get() < self.var_num_blk_plts_reqd.get()):
 			# error user needs to load at least reqd plates to stack
-			self.display_message(True, 'ERROR: Insufficient black plates (%s or more required), please add more and use the '\
+			self.gui_display_message(True, 'ERROR: Insufficient black plates (%s or more required), please add more and use the '\
 				'dropdown entry field to set how many black plates there are now in stack 4.' % str(self.var_num_blk_plts_reqd.get()))
 			return False
 		if askyesno('Verify', 'This will generate the Access System RunDef and Echo files. Are you sure?'):
-			self.display_message(False, 'Starting file creation process, please wait...')
+			self.gui_display_message(False, 'Starting file creation process, please wait...')
 
 		if(args.debug == True):
 			print_debug_message('Successfully validated number of black plates in stack')
@@ -1615,7 +1725,7 @@ class QuantificationGUI:
 			self.s_expt_directory = os.path.join(settings.get('Common').get('dir_expt_root'), self.data_summary['lims_reference_id'])
 			check_and_create_directory(self.s_expt_directory)
 		except Exception as ex:
-			self.display_message(True, 'ERROR: Exception creating the experiment directory. Error Message: <%s>' % str(ex))
+			self.gui_display_message(True, 'ERROR: Exception creating the experiment directory. Error Message: <%s>' % str(ex))
 			return False
 
 		if(args.debug == True):
@@ -1715,7 +1825,7 @@ class QuantificationGUI:
 					# TODO: add validation for all fields before writing the csv row
 					if(dest_well == None):
 						# error, unable to continue
-						self.display_message(True, 'ERROR: Unable to determine valid pooling position for sources to standards plate csv creation. '\
+						self.gui_display_message(True, 'ERROR: Unable to determine valid pooling position for sources to standards plate csv creation. '\
 							'Source plate barcode <%s>. Check Standards configuration file. Cannot continue.' % src_plt_barcode)
 						return False
 					
@@ -1747,10 +1857,10 @@ class QuantificationGUI:
 			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Echo csv file for DNA sources to Standards: %s' % s_csv_filepath_sources_to_standards])
 
 		except IOError as e:
-			self.display_message(True, 'ERROR: IOException writing Echo csv for the Standards intermediate plate to it\'s Black plate.\nError Code: <%s> Message: <%s>' % (str(e.errno), e.strerror))
+			self.gui_display_message(True, 'ERROR: IOException writing Echo csv for the Standards intermediate plate to it\'s Black plate.\nError Code: <%s> Message: <%s>' % (str(e.errno), e.strerror))
 			return False
 		except Exception as ex:
-			self.display_message(True, 'ERROR: Exception writing Echo csv for the Standards intermediate plate to it\'s Black plate.\nError Message: <%s>' % str(ex))
+			self.gui_display_message(True, 'ERROR: Exception writing Echo csv for the Standards intermediate plate to it\'s Black plate.\nError Message: <%s>' % str(ex))
 			return False
 
 		return True
@@ -1916,10 +2026,10 @@ class QuantificationGUI:
 			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Echo csv file for Standards to Black: %s' % s_csv_filepath_standards_to_black])
 
 		except IOError as e:
-			self.display_message(True, 'ERROR: IOException writing Echo csv for the Standards intermediate plate to it\'s Black plate.\nError Code: <%s> Message: <%s>' % (str(e.errno), e.strerror))
+			self.gui_display_message(True, 'ERROR: IOException writing Echo csv for the Standards intermediate plate to it\'s Black plate.\nError Code: <%s> Message: <%s>' % (str(e.errno), e.strerror))
 			return False
 		except Exception as ex:
-			self.display_message(True, 'ERROR: Exception writing Echo csv for the Standards intermediate plate to it\'s Black plate.\nError Message: <%s>' % str(ex))
+			self.gui_display_message(True, 'ERROR: Exception writing Echo csv for the Standards intermediate plate to it\'s Black plate.\nError Message: <%s>' % str(ex))
 			return False
 
 		return True
@@ -2009,10 +2119,10 @@ class QuantificationGUI:
 			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Echo csv file for DNA sources to Blacks: %s' % s_csv_filepath_sources_to_black_plts])
 
 		except IOError as e:
-			self.display_message(True, 'ERROR: IOException writing Echo csv for the Standards intermediate plate to it\'s Black plate.\nError Code: <%s> Message: <%s>' % (str(e.errno), e.strerror))
+			self.gui_display_message(True, 'ERROR: IOException writing Echo csv for the Standards intermediate plate to it\'s Black plate.\nError Code: <%s> Message: <%s>' % (str(e.errno), e.strerror))
 			return False
 		except Exception as ex:
-			self.display_message(True, 'ERROR: Exception writing Echo csv for the Standards intermediate plate to it\'s Black plate.\nError Message: <%s>' % str(ex))
+			self.gui_display_message(True, 'ERROR: Exception writing Echo csv for the Standards intermediate plate to it\'s Black plate.\nError Message: <%s>' % str(ex))
 			return False
 
 		return True
@@ -2073,7 +2183,7 @@ class QuantificationGUI:
 				print_debug_message('-' * 80)
 			
 		except Exception as e:
-			self.display_message(True, 'ERROR: Exception when determining directory paths while creating RunDef files.\nError Message: <%s>' % str(e))
+			self.gui_display_message(True, 'ERROR: Exception when determining directory paths while creating RunDef files.\nError Message: <%s>' % str(e))
 			return False
 
 		if (not self.create_rundef_file_from_template(quant_rundef_dict, s_rundef_1_expt_filepath, s_rundef_1_template_filepath)):
@@ -2089,7 +2199,7 @@ class QuantificationGUI:
 			# record log message
 			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Tempo RunDef file copied to the Tempo Inbox at : %s' % s_rundef_1_tempo_inbox_filepath])
 		except Exception as e:
-			self.display_message(True, 'ERROR: Exception copying the newly created RunDef file to the experiment directory.\nError Message: <%s>' % str(e))
+			self.gui_display_message(True, 'ERROR: Exception copying the newly created RunDef file to the experiment directory.\nError Message: <%s>' % str(e))
 			return False
 
 		return True
@@ -2124,7 +2234,7 @@ class QuantificationGUI:
 						file_out.write(line)
 						i_line_num += 1
 		except Exception as e:
-			self.display_message(True, 'ERROR: Exception creating the RunDef file at line <%s>.\nError Message: <%s>' % (str(i_line_num), str(e)))
+			self.gui_display_message(True, 'ERROR: Exception creating the RunDef file at line <%s>.\nError Message: <%s>' % (str(i_line_num), str(e)))
 			return False
 
 		# record log message
@@ -2408,6 +2518,13 @@ def check_and_create_directory(s_directory):
 			print_debug_message('Attempting to create directory = %s' % s_directory)
 
 		os.makedirs(s_directory)
+
+	return
+
+def copy_file(s_src_filepath, s_dest_filepath):
+	'''Copy a file from one filepath to another'''
+
+	shutil.copyfile(s_src_filepath, s_dest_filepath)
 
 	return
 
