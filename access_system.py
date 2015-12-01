@@ -88,6 +88,12 @@ TODO:
 * add button to 'abort' run that tidies up experiment directory - for when Tempo crashes or ends run in poor way.
   probably also needs to trap a 'close window' event in case user clicks there during a run or after an error.
 
+* add check when reading echo files for source plate type (from config) e.g. 384PP_AQ_SP_High and dest plate 
+  type (from config) e.g. Armadillo 384. Could also check the filename for matching EchoPlateIDs for src and dest.
+  what do the numbers in the filenames mean? is __1__2 src ID 1 to dest ID 2?
+
+* split script into separate files for GUI class, common GUI functionality, utility methods etc.
+
 '''
 
 import argparse 				# to parse command line arguments
@@ -99,7 +105,7 @@ import inspect 					# for getting method name
 import re 						# for regex expressions
 import shutil 					# for file copying
 import time 					# for timestamps
-import xml.etree.ElementTree 	# for parsing xnl
+import xml.etree.ElementTree 	# for parsing xml
 
 from configobj 		import ConfigObj, ConfigObjError 	# for reading config files
 from Tkinter        import * 							# for the GUI interfaces
@@ -110,9 +116,11 @@ from collections 	import deque 						# for message queuing
 
 from pprint import pprint # for pretty printing e.g. lists and dictionaries
 
-# -----------------------------------------------------------------------------
-# Variables
-# -----------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
+# 																			  #
+# 				Section: Constants and Variables                              #
+# 																			  #
+# --------------------------------------------------------------------------- #
 script_version 				= '1.0'
 
 # configuration filepath is relative to the location of this script
@@ -140,9 +148,11 @@ font_arial_large_bold 		= 'Arial -18 bold'
 font_arial_medium_bold 		= 'Arial -16 bold'
 font_verdana_normal_italic 	= 'Verdana -12 italic'
 
-# -----------------------------------------------------------------------------
-# Initialisation Methods
-# -----------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
+# 																			  #
+# 				Section: Configuration and File Parsing                       #
+# 																			  #
+# --------------------------------------------------------------------------- #
 def parse_command_line_arguments():
 	'''Parse the command line arguments.
 
@@ -201,17 +211,19 @@ def parse_access_system_config_file():
 				'version_number':'flt'
 		},
 		'Common':{
+				'fpath_ecp_384armadillo':'str',
+				'fpath_ecp_384corningblack':'str',
+				'fpath_ecp_384dest':'str',
 				'dir_tempo_rundef_inbox':'str',
 				'dir_tempo_rundef_outbox':'str',
 				'dir_tempo_rundef_error':'str',
 				'dir_tempo_runs_root':'str',
+				'dir_echo_cache_logs_transfer':'str',
+				'dir_echo_cache_logs_survey':'str',
 				'dir_expt_root':'str',
 				'dir_expt_processed':'str',
 				'dir_expt_error':'str',
 				'dir_rundef_templates':'str',
-				'fpath_ecp_384armadillo':'str',
-				'fpath_ecp_384corningblack':'str',
-				'fpath_ecp_384dest':'str',
 				'src_plts_initial_stk_posn':'int',
 				'gui_width':'int',
 				'gui_height':'int',
@@ -394,23 +406,11 @@ def parse_quant_standards_config_file(stnd_type):
 
 # 	return
 
-# -----------------------------------------------------------------------------
-# Processing Methods
-# -----------------------------------------------------------------------------
-def process_quant():
-	'''Entry method for processing the quant mode'''
-
-	if(args.debug == True):
-		print_debug_message('In %s' % inspect.currentframe().f_code.co_name)
-
-	# build the user interface to ask the user to the select files required 
-	display_gui_quant()
-
-	return
-
-# -----------------------------------------------------------------------------
-# GUI Screen Classes
-# -----------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
+# 																			  #
+# 				Section: Graphical User Interface Classes                     #
+# 																			  #
+# --------------------------------------------------------------------------- #
 class QuantificationGUI:
 	'''GUI class for DNA quantification'''
 
@@ -825,7 +825,7 @@ class QuantificationGUI:
 				print_debug_message('Failed to generate csv files')
 			return
 
-		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['-' * 62])
+		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['-' * 62]) # write to log
 
 		# generate Access RunDef files
 		if(self.generate_quantification_rundef_files()):
@@ -835,7 +835,7 @@ class QuantificationGUI:
 				print_debug_message('Failed to generate RunDef file')
 			return
 
-		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['-' * 62])
+		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['-' * 62]) # write to log
 
   		# copy the LIMS file and place it in the experiment directory
 		try:
@@ -844,12 +844,10 @@ class QuantificationGUI:
 
 			copy_file(self.lims_src_plt_grp_filepath, new_expt_filepath)
 
-			# record log message
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['LIMS plate file copied to experiment directory at : %s' % new_expt_filepath, '-' * 62])
-
-			self.gui_display_message(False, 'RunDef file <%s> moved to the Tempo Inbox.' % self.s_dnaq_standards_rundef_expt_filename)
+			self.log_and_display_msg(False, 'LIMS plate file copied to experiment directory at : %s' % new_expt_filepath)
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['-' * 62]) # write to log
 		except Exception as e:
-			self.gui_display_message(True, 'ERROR: Exception copying the LIMS plate grouping file into the experiment directory.\nError Message: <%s>' % str(e))
+			self.log_and_display_msg(True, 'ERROR: Exception copying the LIMS plate grouping file into the experiment directory.\nError Message: <%s>' % str(e))
 			return
 
 		# dna quantification standards plate creation and read is done with a runset that has two runs
@@ -858,8 +856,7 @@ class QuantificationGUI:
 		if(args.debug == True):
 			print_debug_message('Current RunDef stage is <%s>' % self.current_rundef_identifier['rundef_identifier'])
 
-		# record log message
-		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Starting to monitor the Tempo outbox and error directories'])
+		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Starting to monitor the Tempo outbox and error directories']) # write to log
 
 		# monitor the rundef and extract the RunIds
 		self.monitor_tempo_directories_for_processed_rundef_file()
@@ -977,6 +974,9 @@ class QuantificationGUI:
 	def create_dnaq_log_headers(self):
 		'''Create the experiment log file and add the initial headers'''
 
+		if(args.debug == True):
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
+
 		try:
 			self.expt_logs_directory = os.path.join(self.s_expt_directory, 'logs')
 			self.expt_log_filename 	 = settings.get('Quantification').get('dnaq_fn_log')
@@ -1008,10 +1008,13 @@ class QuantificationGUI:
 
 			log_msg_list.append('-' * 62)
 
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, log_msg_list)
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, log_msg_list) # write to log
+
 		except Exception as e:
-			self.gui_display_message(True, 'ERROR: Exception when attempting to create the log file <%s> in the experiment directory.\nError Message: <%s>' % (s_log_filename, str(e)))
-			return
+			s_msg = 'ERROR: Exception when attempting to create the log file <%s> in the experiment directory.\nError Message: <%s>' % (s_log_filename, str(e))
+			self.gui_display_message(True, s_msg)
+			if(args.debug == True):
+				print_debug_message(s_msg)
 
 		return
 
@@ -1055,7 +1058,7 @@ class QuantificationGUI:
 
 		self.gui_display_message(False, 'Tempo has processed the RunDef file into the outbox dir: <%s>, attempting to parse RunIDs' % s_rundef_file)
 
-		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Tempo processed RunDef file to Outbox: %s' % s_rundef_file])
+		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Tempo processed RunDef file to Outbox: %s' % s_rundef_file]) # write to log
 
 		# parse RunDef (XML format)file to identify run ids
 		run_ids_list = []
@@ -1083,25 +1086,19 @@ class QuantificationGUI:
 
 				# verify this file is for this runset
 				if(not s_run_ref_id ==self.data_summary['lims_reference_id']):
-					s_err_msg = 'ERROR: Run ReferenceID <%s> does not match expected when attempting to parse the RunDef file to extract RunIDs' % s_run_ref_id
-					append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_err_msg]) # write to log
-					self.gui_display_message(True, s_err_msg)
+					self.log_and_display_msg(True, 'ERROR: Run ReferenceID <%s> does not match expected when attempting to parse the RunDef file to extract RunIDs' % s_run_ref_id)
 					return
 
 				# verify that the run id extracted is a number
 				if(s_run_id == None or s_run_id == '0'):
-					s_err_msg = 'ERROR: RunID zero or null when attempting to parse the RunDef file to extract RunIDs'
-					append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_err_msg]) # write to log
-					self.gui_display_message(True, s_err_msg)
+					self.log_and_display_msg(True, 'ERROR: RunID zero or null when attempting to parse the RunDef file to extract RunIDs')
 					return
 				else:
 					run_ids_list.append(s_run_id)
-					append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Identified RunID: %s' % s_run_id]) # write to log
+					self.log_and_display_msg(False, 'Identified RunID: %s' % s_run_id)
 					
 		except Exception as e:
-			s_err_msg = 'ERROR: Exception when attempting to parse the RunDef file to extract RunIDs.\nError Message: <%s>' % str(e)
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_err_msg]) # write to log
-			self.gui_display_message(True, s_err_msg)
+			self.log_and_display_msg(True, 'ERROR: Exception when attempting to parse the RunDef file to extract RunIDs.\nError Message: <%s>' % str(e))
 			return
 
 		# set the run processing identifiers according to the current_rundef_identifier 
@@ -1112,23 +1109,17 @@ class QuantificationGUI:
 				self.current_run_identifiers.append({'run_identifier_name' : 'dnaq_process_standards_run_1', 'run_id_num' : run_ids_list[0]})
 				self.current_run_identifiers.append({'run_identifier_name' : 'dnaq_process_standards_run_2', 'run_id_num' : run_ids_list[1]})
 			else:
-				s_err_msg = 'ERROR: Unexpected number of RunIDs found in Standards RunDef file, found <%s> when expecting 2. Cannot continue.' % run_ids_list.len
-				append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_err_msg]) # write to log
-				self.gui_display_message(True, s_err_msg)
+				self.log_and_display_msg(True, 'ERROR: Unexpected number of RunIDs found in Standards RunDef file, found <%s> when expecting 2. Cannot continue.' % run_ids_list.len)
 				return
 		elif(self.current_rundef_identifier['rundef_identifier'] == 'dnaq_process_dna_sources'):
 			# expecting one run id
 			if(len(run_ids_list) == 1):
 				self.current_run_identifiers.append({'run_identifier_name' : 'dnaq_process_dna_sources_run_1', 'run_id_num' : run_ids_list[0]})
 			else:
-				s_err_msg = 'ERROR: Unexpected number of RunIDs found in DNA Sources RunDef file, found <%s> when expecting 1. Cannot continue.' % run_ids_list.len
-				append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_err_msg]) # write to log
-				self.gui_display_message(True, s_err_msg)
+				self.log_and_display_msg(True, 'ERROR: Unexpected number of RunIDs found in DNA Sources RunDef file, found <%s> when expecting 1. Cannot continue.' % run_ids_list.len)
 				return
 		else:
-			s_err_msg = 'ERROR: Unrecognised current rundef identifier <%s>. Cannot continue.' % self.current_rundef_identifier['rundef_identifier']
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_err_msg]) # write to log
-			self.gui_display_message(True, s_err_msg)
+			self.log_and_display_msg(True, 'ERROR: Unrecognised current rundef identifier <%s>. Cannot continue.' % self.current_rundef_identifier['rundef_identifier'])
 			return
 
 		self.monitor_tempo_rundef_run(0)
@@ -1141,9 +1132,7 @@ class QuantificationGUI:
 			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
 		# If Tempo detects an error with the RunDef file it moves it to the /error directory (without renaming) and creates a .err file matching the RunDef file name
-		s_err_msg = 'Tempo detected a problem with RunDef file <%s>. See the .err file in the experiment tempo_rundef_error directory for details.' % s_rundef_filename
-		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_err_msg]) # write to log
-		self.gui_display_message(True, s_err_msg)
+		self.log_and_display_msg(True, 'Tempo detected a problem with RunDef file <%s>. See the .err file in the experiment tempo_rundef_error directory for details.' % s_rundef_filename)
 
 		# copy the error file and rundef (rundef file name stays the same, error file ends in .err) to the expt directory
 		try:
@@ -1157,7 +1146,7 @@ class QuantificationGUI:
 			s_rundef_dest_filepath		= os.path.join(s_expt_err_dir, s_rundef_filename)
 			copy_file(s_rundef_src_filepath, s_rundef_dest_filepath)
 
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Copied RunDef file <%s> to experiment tempo_rundef_error directory' % s_rundef_filename]) # write to log
+			self.log_and_display_msg(False, 'Copied RunDef file <%s> to experiment tempo_rundef_error directory' % s_rundef_filename)
 
 			# copy the .err file
 			s_err_filename 				= os.path.splitext(s_rundef_filename)[0] + '.err'
@@ -1165,12 +1154,10 @@ class QuantificationGUI:
 			s_err_dest_filepath			= os.path.join(s_expt_err_dir, s_err_filename)
 			copy_file(s_err_src_filepath, s_err_dest_filepath)
 
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Copied Err file <%s> to experiment tempo_rundef_error directory' % s_err_filename]) # write to log
+			self.log_and_display_msg(False, 'Copied Err file <%s> to experiment tempo_rundef_error directory' % s_err_filename)
 
 		except Exception as e:
-			s_err_msg = 'ERROR: Exception trying to backup the Tempo run error files.\nError Message: <%s>' % str(e)
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_err_msg]) # write to log
-			self.gui_display_message(True, s_err_msg)
+			self.log_and_display_msg(True, 'ERROR: Exception trying to backup the Tempo run error files.\nError Message: <%s>' % str(e))
 			return
 
 		# TODO: extract information from rundef .err file and display to user?
@@ -1198,7 +1185,7 @@ class QuantificationGUI:
 			self.gui_display_message(True, 'ERROR: Exception determining the current run directory.\nError Message: <%s>' % str(e))
 			return
 
-		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Monitoring Run ID: %s' % str(self.current_run_identifier['run_id_num'])])
+		self.log_and_display_msg(False, 'Monitoring Run ID: %s' % str(self.current_run_identifier['run_id_num']))
 
 		# monitor the run state
 		self.monitor_tempo_run_directory(current_run_dir, current_run_filename)
@@ -1236,13 +1223,9 @@ class QuantificationGUI:
 
 		if(not current_runstate is None):
 			if(current_runstate == 'Complete'):
-				if(args.debug == True):
-					print_debug_message('RunState is Complete')
 				self.perform_post_run_actions()
 				return
 			elif(current_runstate == 'Stopped'):
-				if(args.debug == True):
-					print_debug_message('RunState is Stopped')
 				self.perform_run_stopped_actions()
 				return
 			else:
@@ -1258,28 +1241,12 @@ class QuantificationGUI:
 		if(args.debug == True):
 			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 	
-		s_msg = 'Performing post-run actions for Run identifier <%s> with RunID <%s>' % (self.current_run_identifier['run_identifier_name'], str(self.current_run_identifier['run_id_num']))
-		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
-		self.gui_display_message(False, s_msg)
-
-		if(args.debug == True):
-			print_debug_message(s_msg)
+		self.log_and_display_msg(False, 'Performing post-run actions for Run identifier <%s> with RunID <%s>' % (self.current_run_identifier['run_identifier_name'], str(self.current_run_identifier['run_id_num'])))
 
 		# perform post run actions by identifiers
 		if(self.current_run_identifier['run_identifier_name'] == 'dnaq_process_standards_run_1'):
 			# perform run-specific actions
-
-			# verify that run completed without errors:
-			# 		- find and copy across echo survey and transfer files
-			# 		- parse echo transfer files to check for echo transfer errors
-			# 		- what is the error level allowed here? above certain threshold of sample failures abort? are the control wells essential to be transferred?
-			# 		- record succeses/fails in simple XML for use in the calculations later
-			# copy across run directory to experiment directory
-			# Use the Run_1/Plates1.xml file to map the plate ids and names to our DNA plate barcodes ] CHECK: will or will not the ids match to those in Run 3 as seperate rundef?!
-			
-			s_msg = 'Post-Run actions for dnaq_process_standards_run_1 with RunID <%s> completed' % str(self.current_run_identifier['run_id_num'])
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
-			self.gui_display_message(False, s_msg)
+			self.perform_post_run_actions_dnaq_process_standards_run_1()
 
 			# process the second Run in the RunDef to transfer from Standards to black plate
 			self.monitor_tempo_rundef_run(1)
@@ -1315,26 +1282,91 @@ class QuantificationGUI:
 			# 		Tidy up:
 			# 			copy Run 1 and 2 Tempo logs directories into expt/%reference_id% directory and then rename the expt/%reference_id% directory as _aborted_%timestamp%).
 
-			s_msg = 'Post-Run actions for dnaq_process_standards_run_2 with RunID <%s> completed' % str(self.current_run_identifier['run_id_num'])
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
-			self.gui_display_message(False, s_msg)
+			self.log_and_display_msg(False, 'Post-Run actions for dnaq_process_standards_run_2 with RunID <%s> completed' % str(self.current_run_identifier['run_id_num']))
 
 			self.perform_post_rundef_actions()
 
 		elif(self.current_run_identifier['run_identifier_name'] == 'dnaq_process_dna_sources_run_1'):
 			# perform run-specific actions
 
-			s_msg = 'Post-Run actions for dnaq_process_dna_sources_run_1 with RunID <%s> completed' % str(self.current_run_identifier['run_id_num'])
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
-			self.gui_display_message(False, s_msg)
+			self.log_and_display_msg(False, 'Post-Run actions for dnaq_process_dna_sources_run_1 with RunID <%s> completed' % str(self.current_run_identifier['run_id_num']))
 
 			self.perform_post_rundef_actions()
 
 		else:
 			# not recognised error
-			s_msg = 'ERROR: Unrecognised run identifier <%s> when attempting to perform post-Run actions. Cannot continue.' % self.current_run_identifier['run_identifier_name']
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
-			self.gui_display_message(True, s_msg)
+			self.log_and_display_msg(True, 'ERROR: Unrecognised run identifier <%s> when attempting to perform post-Run actions. Cannot continue.' % self.current_run_identifier['run_identifier_name'])
+
+		return
+
+	def perform_post_run_actions_dnaq_process_standards_run_1(self):
+		'''Perform post-run actions specific to the dnaq standards run 1'''
+
+		if(args.debug == True):
+			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
+		# TODO: verify that the run completed without errors:
+		# 		- find and copy across echo survey and transfer files for each pool of DNA source to Standards plate
+		# 		- parse echo transfer files to check for echo transfer errors
+		# 		- what is the error level allowed here? above certain threshold of sample failures abort? are the control wells essential to be transferred?
+		# 		- record succeses/fails in simple XML for use in the calculations later
+
+		# TODO: Use the Run_1/Plates1.xml file to map the plate ids and names to our DNA plate barcodes ] CHECK: will or will not the ids match to those in Run 3 as seperate rundef?!
+
+		s_src_dir_echo_transfers 	= settings.get('Common').get('dir_echo_cache_logs_transfer')
+		s_src_dir_echo_surveys 		= settings.get('Common').get('dir_echo_cache_logs_survey')
+
+		# copy Echo survey and transfer files across to expt directory for each source plate
+		i_plt_index 				= self.data_summary.get('num_src_plts')
+
+		for plate in self.data_summary.get('plts_dict'):
+			s_plt_idx 				= str(i_plt_index)			
+			s_curr_plt_bc 			= self.data_summary.get('plts_dict').get(s_plt_idx).get('barcode')
+
+			if(args.debug == True):
+				print_debug_message('Looking for Echo Survey and Transfer files for DNA source barcode %s' % s_curr_plt_bc)
+
+			try:
+				# NB. directory names cannot contain colons so replace with another symbol
+				s_dest_dir 			= os.path.join(self.s_expt_directory, convert_string_to_directory_name(s_curr_plt_bc))
+
+				# create a DNA source plate directory in the experiment /plates directory
+				check_and_create_directory(s_dest_dir)
+
+				# attempt to identify the Echo Transfer files related to this source plate
+				if(check_echo_directory_for_barcoded_file('t', s_curr_plt_bc, s_src_dir_echo_transfers, s_dest_dir)):
+					# found a transfer file and copied it
+					self.log_and_display_msg(False, 'Found and copied Echo Transfer file for DNA source barcode %s' % s_curr_plt_bc)
+
+				else:
+					# failed to find a matching transfer file
+					self.log_and_display_msg(True, 'ERROR: Failed to find Echo Transfer file for DNA source barcode %s' % s_curr_plt_bc)
+
+				# attempt to identify the Echo Survey files related to this source plate
+				if(check_echo_directory_for_barcoded_file('s', s_curr_plt_bc, s_src_dir_echo_surveys, s_dest_dir)):
+					# found a survey file and copied it
+					self.log_and_display_msg(False, 'Found and copied Echo Survey file for DNA source barcode %s' % s_curr_plt_bc)
+				else:
+					# failed to find a matching survey file
+					self.log_and_display_msg(True, 'ERROR: Failed to find Echo Survey file for DNA source barcode %s' % s_curr_plt_bc)
+			except Exception as e:
+				self.log_and_display_msg(True, 'ERROR: Exception attempting to create the experiment source plate directory for barcode %s.\nError Message: <%s>' % (s_curr_plt_bc, str(e)))
+				return
+
+			i_plt_index 			-= 1
+
+		s_runID = str(self.current_run_identifier['run_id_num'])
+
+		# copy across run directory to experiment directory
+		try:
+			tempo_run_dir 		= os.path.join(settings.get('Common').get('dir_tempo_runs_root'), 'Run_' + s_runID)
+			expt_run_dir 		= os.path.join(self.s_expt_directory, 'Run_' + s_runID)
+			copy_dir_tree(tempo_run_dir, expt_run_dir) # copy run directory
+
+		except Exception as e:
+			self.log_and_display_msg(True, 'ERROR: Exception copying directory for runID <%s> into the experiment directory.\nError Message: <%s>' % (s_runID , str(e)))
+			return
+
+		self.log_and_display_msg(False, 'Post-Run actions for dnaq_process_standards_run_1 with RunID <%s> completed' % s_runID)
 
 		return
 
@@ -1344,9 +1376,7 @@ class QuantificationGUI:
 		if(args.debug == True):
 			print_debug_message('In QuantificationGUI.%s' % inspect.currentframe().f_code.co_name)
 
-		s_msg = 'Tempo has Stopped the Run with identifier <%s> and RunID <%s>' % (self.current_run_identifier['run_identifier_name'], str(self.current_run_identifier['run_id_num']))
-		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
-		self.gui_display_message(True, s_msg)
+		self.log_and_display_msg(True, 'Tempo has Stopped the Run with identifier <%s> and RunID <%s>' % (self.current_run_identifier['run_identifier_name'], str(self.current_run_identifier['run_id_num'])))
 
 		if(args.debug == True):
 			print_debug_message(s_msg)
@@ -1357,34 +1387,26 @@ class QuantificationGUI:
 
 			# TODO: add actions here
 
-			s_msg = 'Stopped Run actions for dnaq_process_standards_run_1 with RunID <%s> completed' % str(self.current_run_identifier['run_id_num'])
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
-			self.gui_display_message(False, s_msg)
+			self.log_and_display_msg(False, 'Stopped Run actions for dnaq_process_standards_run_1 with RunID <%s> completed' % str(self.current_run_identifier['run_id_num']))
 
 		elif(self.current_run_identifier['run_identifier_name'] == 'dnaq_process_standards_run_2'):
 			# perform run-specific actions
 
 			# TODO: add actions here
 
-			s_msg = 'Stopped Run actions for dnaq_process_standards_run_2 with RunID <%s> completed' % str(self.current_run_identifier['run_id_num'])
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
-			self.gui_display_message(False, s_msg)
+			self.log_and_display_msg(False, 'Stopped Run actions for dnaq_process_standards_run_2 with RunID <%s> completed' % str(self.current_run_identifier['run_id_num']))
 
 		elif(self.current_run_identifier['run_identifier_name'] == 'dnaq_process_dna_sources_run_1'):
 			# perform run-specific actions
 
 			# TODO: add actions here
 
-			s_msg = 'Stopped Run actions for dnaq_process_dna_sources_run_1 with RunID <%s> completed' % str(self.current_run_identifier['run_id_num'])
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
-			self.gui_display_message(False, s_msg)
+			self.log_and_display_msg(False, 'Stopped Run actions for dnaq_process_dna_sources_run_1 with RunID <%s> completed' % str(self.current_run_identifier['run_id_num']))
 
 		else:
 			# not recognised error
 			
-			s_msg = 'ERROR: Unrecognised run identifier <%s> when attempting to perform Stopped Run actions. Cannot continue.' % self.current_run_identifier['run_identifier_name']
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
-			self.gui_display_message(True, s_msg)
+			self.log_and_display_msg(True, 'ERROR: Unrecognised run identifier <%s> when attempting to perform Stopped Run actions. Cannot continue.' % self.current_run_identifier['run_identifier_name'])
 
 		return
 
@@ -1400,24 +1422,18 @@ class QuantificationGUI:
 
 			# TODO: add actions here
 
-			s_msg = 'Post-RunDef actions for dnaq_process_standards for Reference ID <%s> completed' % self.data_summary['lims_reference_id']
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
-			self.gui_display_message(False, s_msg)
+			self.log_and_display_msg(False, 'Post-RunDef actions for dnaq_process_standards for Reference ID <%s> completed' % self.data_summary['lims_reference_id'])
 
 		elif(self.current_rundef_identifier['rundef_identifier'] == 'dnaq_process_dna_sources'):
 			# perform rundef-specific actions
 
 			# TODO: add actions here
 
-			s_msg = 'Post-RunDef actions for dnaq_process_dna_sources for Reference ID <%s> completed' % self.data_summary['lims_reference_id']
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
-			self.gui_display_message(False, s_msg)
+			self.log_and_display_msg(False, 'Post-RunDef actions for dnaq_process_dna_sources for Reference ID <%s> completed' % self.data_summary['lims_reference_id'])
 
 		else:
 			# unexpected rundef identifier
-			s_msg = 'ERROR: Unrecognised current rundef identifier <%s>. Cannot continue.' % self.current_rundef_identifier['rundef_identifier']
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
-			self.gui_display_message(True, s_msg)
+			self.log_and_display_msg(True, 'ERROR: Unrecognised current rundef identifier <%s>. Cannot continue.' % self.current_rundef_identifier['rundef_identifier']) 
 
 			# TODO: add tidy up here
 
@@ -1436,12 +1452,12 @@ class QuantificationGUI:
 			s_ts 							= get_current_timestamp_as_string() + '_'
 			new_dir_name 					= s_ts + self.data_summary['lims_reference_id']
 			dest_dir  						= os.path.join(settings.get('Common').get('dir_expt_error'), new_dir_name)
-			move_and_rename_directory(self.s_expt_directory, dest_dir) 
-		except Exception as ex:
-			self.gui_display_message(True, 'ERROR: Exception when aborting the experiment. Error Message: <%s>' % str(ex))
-			return
 
-		self.gui_display_message(False, 'Experiment aborted and directory moved to %s' % dest_dir)
+			self.log_and_display_msg(True, 'Experiment aborted and directory moved to %s' % dest_dir)
+
+			move_and_rename_directory(self.s_expt_directory, dest_dir)
+		except Exception as ex:
+			self.log_and_display_msg(True, 'ERROR: Exception when aborting the experiment. Error Message: <%s>' % str(ex))
 
 		return
 
@@ -1624,18 +1640,18 @@ class QuantificationGUI:
 		self.txt_summary.insert(END, '%s\n\n' % self.data_summary.get('num_src_plts'), ('tag_hl'))
 
 		# insert a row for each plate, displaying in reverse (stack order)
-		i_plate_index 			= self.data_summary.get('num_src_plts')
-		i_src_plt_stack_posn 	= settings.get('Common').get('src_plts_initial_stk_posn') + i_plate_index - 1
+		i_plt_idx 				= self.data_summary.get('num_src_plts')
+		i_src_plt_stack_posn 	= settings.get('Common').get('src_plts_initial_stk_posn') + i_plt_idx - 1
 
 		for plate in self.data_summary.get('plts_dict'):
-			s_plt_idx 				= str(i_plate_index)
+			s_plt_idx 				= str(i_plt_idx)
 			s_src_plt_stack_posn 	= str(i_src_plt_stack_posn)
 
 			bg_tags = ()
 			hl_tags = ('tag_hl')
 	
 			# every odd numbered row has light grey background to make it easier on the eye
-			if(i_plate_index % 2 == 1):
+			if(i_plt_idx % 2 == 1):
 				bg_tags = ('tag_bg_grey')
 				hl_tags = ('tag_bg_grey', 'tag_hl')
 
@@ -1650,7 +1666,7 @@ class QuantificationGUI:
 			self.txt_summary.insert(END, '\t\tNum Controls\t: ', bg_tags)
 			self.txt_summary.insert(END, '%s\n' % s_curr_plt_num_ctrls, hl_tags)
 
-			i_plate_index 			-= 1
+			i_plt_idx 				-= 1
 			i_src_plt_stack_posn 	-= 1
 
 		# set required plates variable to num plates + 1 (for standards int plate)
@@ -1759,7 +1775,6 @@ class QuantificationGUI:
 
 		return True
 
-
 	def generate_sources_to_standards_csv_file(self):
 		'''Generate the csv file for transferring DNA Source plate wells to pool wells on Standards plate
 
@@ -1833,8 +1848,8 @@ class QuantificationGUI:
 					i_src_well_idx 					= 0
 					while i_src_well_idx < len(curr_wells):
 
-						if(args.debug == True):
-							print_debug_message('Well indx = %s' % str(i_src_well_idx))
+						# if(args.debug == True):
+						# 	print_debug_message('Well indx = %s' % str(i_src_well_idx))
 
 						if(curr_wells[i_src_well_idx]['ROLE'] == 'SAMPLE' or curr_wells[i_src_well_idx]['ROLE'] == 'CONTROL'):
 
@@ -1853,8 +1868,7 @@ class QuantificationGUI:
 
 					i_plt_idx 					+= 1
 
-			# record log message
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Echo csv file for DNA sources to Standards: %s' % s_csv_filepath_sources_to_standards])
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Echo csv file for DNA sources to Standards: %s' % s_csv_filepath_sources_to_standards]) # write to log
 
 		except IOError as e:
 			self.gui_display_message(True, 'ERROR: IOException writing Echo csv for the Standards intermediate plate to it\'s Black plate.\nError Code: <%s> Message: <%s>' % (str(e.errno), e.strerror))
@@ -2022,8 +2036,7 @@ class QuantificationGUI:
 
 					i_plt_idx 				+= 1
 
-			# record log message
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Echo csv file for Standards to Black: %s' % s_csv_filepath_standards_to_black])
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Echo csv file for Standards to Black: %s' % s_csv_filepath_standards_to_black]) # write to log
 
 		except IOError as e:
 			self.gui_display_message(True, 'ERROR: IOException writing Echo csv for the Standards intermediate plate to it\'s Black plate.\nError Code: <%s> Message: <%s>' % (str(e.errno), e.strerror))
@@ -2115,8 +2128,7 @@ class QuantificationGUI:
 
 					i_plt_idx 				+= 1
 
-			# record log message
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Echo csv file for DNA sources to Blacks: %s' % s_csv_filepath_sources_to_black_plts])
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Echo csv file for DNA sources to Blacks: %s' % s_csv_filepath_sources_to_black_plts]) # write to log
 
 		except IOError as e:
 			self.gui_display_message(True, 'ERROR: IOException writing Echo csv for the Standards intermediate plate to it\'s Black plate.\nError Code: <%s> Message: <%s>' % (str(e.errno), e.strerror))
@@ -2197,7 +2209,8 @@ class QuantificationGUI:
 			shutil.copyfile(s_rundef_1_expt_filepath, s_rundef_1_tempo_inbox_filepath)
 
 			# record log message
-			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Tempo RunDef file copied to the Tempo Inbox at : %s' % s_rundef_1_tempo_inbox_filepath])
+			self.gui_display_message(False, 'RunDef file <%s> moved to the Tempo Inbox.' % self.s_dnaq_standards_rundef_expt_filename)
+			append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Tempo RunDef file copied to the Tempo Inbox at : %s' % s_rundef_1_tempo_inbox_filepath]) # write to log
 		except Exception as e:
 			self.gui_display_message(True, 'ERROR: Exception copying the newly created RunDef file to the experiment directory.\nError Message: <%s>' % str(e))
 			return False
@@ -2237,8 +2250,7 @@ class QuantificationGUI:
 			self.gui_display_message(True, 'ERROR: Exception creating the RunDef file at line <%s>.\nError Message: <%s>' % (str(i_line_num), str(e)))
 			return False
 
-		# record log message
-		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Tempo RunDef file created at : %s' % s_expt_filepath])
+		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, ['Tempo RunDef file created at : %s' % s_expt_filepath]) # write to log
 
 		return True
 
@@ -2503,23 +2515,133 @@ class QuantificationGUI:
 
 		return quant_rundef_dict
 
-# -----------------------------------------------------------------------------
-# Utility Methods
-# -----------------------------------------------------------------------------
-def check_and_create_directory(s_directory):
+	def log_and_display_msg(self, is_error, s_msg):
+		'''Log and display a message'''
+
+		append_to_log_file(self.expt_logs_directory, self.expt_log_filename, [s_msg]) # write to log
+		self.gui_display_message(is_error, s_msg) # display message in GUI
+
+		if(args.debug == True):
+			print_debug_message(s_msg)
+
+		return
+
+# --------------------------------------------------------------------------- #
+# 																			  #
+# 				Section: Utility Functions                                    #
+# 																			  #
+# --------------------------------------------------------------------------- #
+def check_and_create_directory(s_src_dir):
 	'''Check whether a directory exists and create it if not'''
 
 	if(args.debug == True):
 		print_debug_message('In %s' % inspect.currentframe().f_code.co_name)
+		print_debug_message('s_src_dir = %s' % s_src_dir)
 
 	# check if the directory exists and create it if not
-	if(not os.path.exists(s_directory)):
+	if(not os.path.exists(s_src_dir)):
 		if(args.debug == True):
-			print_debug_message('Attempting to create directory = %s' % s_directory)
+			print_debug_message('Attempting to create directory = %s' % s_src_dir)
 
-		os.makedirs(s_directory)
+		os.makedirs(s_src_dir)
 
 	return
+
+def check_echo_file_for_barcode_and_copy_file(surv_or_trans, s_barcode, s_src_dir, s_src_file, s_dest_dir):
+	'''Checks Echo Transfer or Survey files for a matching Source barcode'''
+
+	if(args.debug == True):
+		print_debug_message('In %s' % inspect.currentframe().f_code.co_name)
+		print_debug_message('surv_or_trans = %s' % surv_or_trans)
+		print_debug_message('s_barcode = %s' % s_barcode)
+		print_debug_message('s_src_dir = %s' % s_src_dir)
+		print_debug_message('s_src_file = %s' % s_src_file)
+		print_debug_message('s_dest_dir = %s' % s_dest_dir)
+
+
+	src_filepath = os.path.join(s_src_dir, s_src_file)
+	xml_tree     = xml.etree.ElementTree.parse(src_filepath).getroot()
+
+	# checking depends upon whether looking for echo transfer (t) or survey (s) file (XML is different)
+	if(surv_or_trans == 't'):
+
+		# echo transfer file
+		for plate_node in xml_tree.findall('plateInfo/plate'):
+			s_curr_file_type    = plate_node.get('type')
+			s_curr_file_barcode = plate_node.get('barcode')
+
+			if(s_curr_file_type == 'source'):
+				if(s_curr_file_barcode == s_barcode):
+
+					dest_filepath 		= os.path.join(s_dest_dir, 'echo_transfer_' + convert_string_to_directory_name(s_barcode) + '.xml') # destination filepath
+					copy_file(src_filepath, dest_filepath) # copy the file
+
+					if(args.debug == True):
+						print_debug_message('Echo transfer file: %s for source barcode: %s has been copied to the experiment directory' % (s_src_file, s_barcode))
+
+					return True
+
+	elif(surv_or_trans == 's'):
+
+		# echo survey file
+		s_curr_file_barcode 	= xml_tree.get('barcode')
+
+		if(s_curr_file_barcode == s_barcode):
+
+			dest_filepath 			= os.path.join(s_dest_dir, 'echo_survey_' + convert_string_to_directory_name(s_barcode) + '.xml') # destination filepath
+			copy_file(src_filepath, dest_filepath) # copy the file
+
+			if(args.debug == True):
+				print_debug_message('Echo survey file: %s for source barcode: %s has been copied to the experiment directory' % (s_src_file, s_barcode))
+
+			return True                
+
+	else:
+		if(args.debug == True):
+			print_debug_message('ERROR: Unrecognised Echo survey or transfer type.')
+
+	return False
+
+def convert_string_to_directory_name(s_string):
+	'''Remove unusable directory symbols from a string'''
+
+	s_mod_string = s_string.replace(':', '#')
+
+	return s_mod_string
+
+def check_echo_directory_for_barcoded_file(surv_or_trans, s_barcode, src_dir, dest_dir):
+	'''Checks a source directory for Echo Transfer or Survey files and copies one that matches'''
+
+	i_file_counter = 0
+
+	# fetch files with most recent ordered first
+	filelist = get_recent_files(src_dir)
+	if (not filelist == []):
+		for echo_file in filelist:            
+			if echo_file.endswith('.xml'):
+				if(check_echo_file_for_barcode_and_copy_file(surv_or_trans, s_barcode, src_dir, echo_file, dest_dir)):
+					return True
+
+				i_file_counter += 1
+
+	if(args.debug == True):
+		print_debug_message('Checked %s files in total without match for barcode %s' % (str(i_file_counter), s_barcode))
+
+	return False
+
+def copy_dir_tree(s_src_dir, s_dest_dir):
+	'''Copy a directory and all it's content to another directory'''
+
+	if not os.path.exists(s_dest_dir):
+		os.makedirs(s_dest_dir)
+	for item in os.listdir(s_src_dir):
+		s = os.path.join(s_src_dir, item)
+		d = os.path.join(s_dest_dir, item)
+		if os.path.isdir(s):
+			copy_dir_tree(s, d, symlinks, ignore)
+		else:
+			if not os.path.exists(d) or os.stat(s).st_mtime - os.stat(d).st_mtime > 1:
+				shutil.copy2(s, d)
 
 def copy_file(s_src_filepath, s_dest_filepath):
 	'''Copy a file from one filepath to another'''
@@ -2537,6 +2659,16 @@ def get_current_time_as_string():
 	'''Return the current time as a string'''
 	
 	return time.strftime('%H:%M:%S ')
+
+def get_recent_files(src_dir):
+    files = sorted(get_files_in_dir(src_dir), key=os.path.getmtime, reverse=True)
+    return files
+
+def get_files_in_dir(src_dir):
+    files = []
+    for filename in [f for f in os.listdir(src_dir) if os.path.isfile(os.path.join(src_dir, f))]:
+        files.append(os.path.join(src_dir, filename))
+    return files
 
 def move_and_rename_directory(s_src_dir, s_dest_dir):
 	'''Rename and move one directory into another'''
@@ -2615,9 +2747,11 @@ def append_to_log_file(s_log_dir, s_log_filename, s_log_msg_list):
 
 	return
 
-# -----------------------------------------------------------------------------
-# Common GUI Elements
-# -----------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
+# 																			  #
+# 				Section: Common GUI Functions                                 #
+# 																			  #
+# --------------------------------------------------------------------------- #
 def setup_styles_and_themes():
 	'''Create any common styles and themes for the GUI screens'''
 
@@ -2796,9 +2930,6 @@ def add_widget_to_grid(widg, widg_frame, widg_params):
 
 	return
 
-# -----------------------------------------------------------------------------
-# GUI Screen Methods
-# -----------------------------------------------------------------------------
 def on_closing_window():
 	'''Called by a Protocol on the root window, when the user presses the window close button'''
 
@@ -2813,12 +2944,18 @@ def on_closing_window():
 
 	return
 
-def display_gui_quant():
-	'''Display the quantification setup GUI'''
+# --------------------------------------------------------------------------- #
+# 																			  #
+# 				Section: Mode Processing Methods                              #
+# 																			  #
+# --------------------------------------------------------------------------- #
+def process_quant():
+	'''Entry method for processing the quant mode'''
 
 	if(args.debug == True):
 		print_debug_message('In %s' % inspect.currentframe().f_code.co_name)
 
+	# build the user interface to ask the user to the select files required 
 	root 		= Tk()
 	root.geometry('%dx%d+%d+%d' % (	settings.get('Common').get('gui_width'),
 									settings.get('Common').get('gui_height'), 
@@ -2832,9 +2969,11 @@ def display_gui_quant():
 
 	return
 
-# -----------------------------------------------------------------------------
-# Startup
-# -----------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
+# 																			  #
+# 				Section: Main Entry Point                                     #
+# 																			  #
+# --------------------------------------------------------------------------- #
 def main():
 	'''Entry point for the program
 
@@ -2845,10 +2984,10 @@ def main():
 	# read in the command line arguments
 	parse_command_line_arguments()
 
-	# read in the configuration file
+	# read in the common configuration file
 	parse_access_system_config_file()
 
-	# call a function based on the mode name (mode type validated already)
+	# call a function based on the mode name (mode type validated previously)
 	method_name = 'process_' + str(args.mode)
 	return getattr(sys.modules[__name__], method_name)()
     
